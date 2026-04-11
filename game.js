@@ -26,6 +26,7 @@ const COMEBACK_TH = 2;
 // Special power cooldowns
 const CD_FREEZE = 8, CD_SAX = 10, CD_LIGHTNING = 12, CD_MYSTERY = 15, CD_TORNADO = 4, CD_TAIL = 1.4;
 const CD_SHOTGUN = 5, CD_UPPERCUT = 6, CD_BOOMERANG = 7, CD_RAPIDFIRE = 4;
+const CD_RAGE = 15; // Rage super — featured ability on 15s cooldown
 
 // ─── JUICE ───
 const HS_LIGHT = 0.06, HS_HEAVY = 0.12, HS_KO = 0.3, HS_PARRY = 0.1, HS_TAIL = 0.16, HS_LAUNCH = 0.2;
@@ -536,14 +537,15 @@ document.addEventListener('keydown', e => {
     if(e.code==='KeyQ') guestInputBuf.launch=true;
     if(e.code==='Digit1') guestInputBuf.power1=true;
     if(e.code==='Digit2') guestInputBuf.power2=true;
+    if(e.code==='KeyT') guestInputBuf.rage=true;
   }
 });
 document.addEventListener('keyup', e => { keys[e.code]=false; });
 
 // Touch state — P1 (single-player controls + 2P P1 half)
-const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0};
+const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,rage:0};
 // Touch state — P2 (2P P2 half)
-const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0};
+const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,rage:0};
 
 // Single-player touch controls (no data-p attribute)
 document.querySelectorAll('#touch-controls .dpad-btn').forEach(b => {
@@ -1634,6 +1636,7 @@ function mkCroc(x,face,name,charKey){
     doubleDmg:false,
     // Rage
     rageSuperUsed:false,
+    rageCD:0, // 15s cooldown rage button
     // Lightning cloud anim
     lightningCloud:0,
     // ─── PROCEDURAL ANIMATION STATE ───
@@ -1671,6 +1674,7 @@ function resetC(c,x){
   c.speedBoost=1;c.speedBoostT=0;
   c.shieldActive=false;c.doubleDmg=false;
   c.rageSuperUsed=false;
+  c.rageCD=0;
   c.lightningCloud=0;
   // Reset animation state
   c.animT=0;c.walkCycle=0;c.breathCycle=0;c.armAngle=0;c.armTarget=0;
@@ -1780,7 +1784,7 @@ function useSpecialPower(c, o, powerName){
 
 // ─── MEGA PILLOW BOMB (Desperation Super) ───
 function megaPillowBomb(attacker, victim){
-  attacker.rageSuperUsed = true;
+  attacker.rageCD = CD_RAGE;
   sfxMegaBomb();
   addTrauma(1.0);
   hitStop(0.3);
@@ -1812,6 +1816,7 @@ function updateCroc(c,inp,o,dt){
   c.hitFlash=Math.max(0,c.hitFlash-dt);
   c.launchCD=Math.max(0,c.launchCD-dt);
   c.pow1CD=Math.max(0,c.pow1CD-dt);
+  c.rageCD=Math.max(0,c.rageCD-dt);
   c.pow2CD=Math.max(0,c.pow2CD-dt);
   c.squash=lerp(c.squash,1,dt*10);
   c.stretch=lerp(c.stretch,1,dt*10);
@@ -1927,12 +1932,14 @@ function updateCroc(c,inp,o,dt){
     if(c.tornadoT<=0)c.tornadoAct=false;
   }
 
+  // RAGE — featured ability on 15s cooldown
+  if(inp.rage&&c.rageCD<=0&&!c.parrying&&c.alive){
+    megaPillowBomb(c,o);
+  }
+
   // POWER 1
   if(inp.power1&&c.pow1CD<=0&&!c.parrying){
-    // Check rage super (both powers at same time at 1 HP)
-    if(inp.power2&&c.hp<=1&&!c.rageSuperUsed){
-      megaPillowBomb(c,o);
-    } else if(c.power1!=='mystery'||(c.power1==='mystery'&&!mysteryBox)){
+    if(c.power1!=='mystery'||(c.power1==='mystery'&&!mysteryBox)){
       const def=POWERS[c.power1];
       if(def){ c.pow1CD=def.cd; useSpecialPower(c,o,c.power1); }
     } else if(c.power1==='mystery'&&mysteryBox){
@@ -1940,7 +1947,7 @@ function updateCroc(c,inp,o,dt){
     }
   }
   // POWER 2
-  if(inp.power2&&c.pow2CD<=0&&!c.parrying&&!inp.power1){
+  if(inp.power2&&c.pow2CD<=0&&!c.parrying){
     if(c.power2!=='mystery'||(c.power2==='mystery'&&!mysteryBox)){
       const def=POWERS[c.power2];
       if(def){ c.pow2CD=def.cd; useSpecialPower(c,o,c.power2); }
@@ -2003,7 +2010,7 @@ function updateCroc(c,inp,o,dt){
 
 // ─── AI ───
 function getAI(ai,tgt){
-  const inp={left:0,right:0,up:0,attack:0,dash:0,parry:0,tailwhip:0,launch:0,power1:0,power2:0};
+  const inp={left:0,right:0,up:0,attack:0,dash:0,parry:0,tailwhip:0,launch:0,power1:0,power2:0,rage:0};
   const dx=tgt.x-ai.x,adx=Math.abs(dx);
 
   // Movement — approach but sometimes back off
@@ -2040,6 +2047,9 @@ function getAI(ai,tgt){
     if(Math.random()<chance) inp.power2=1;
   }
 
+  // Rage — use when off cooldown and in striking range (but less often than player)
+  if(ai.rageCD<=0&&adx<250&&Math.random()<0.002) inp.rage=1;
+
   // Mystery box pickup if nearby
   if(mysteryBox&&dist(ai.x+ai.w/2,ai.y+ai.h/2,mysteryBox.x,mysteryBox.y)<150&&Math.random()<0.02){
     if(dx>0)inp.right=1;else inp.left=1;
@@ -2051,10 +2061,10 @@ function getAI(ai,tgt){
 // ─── GAME STATE ───
 let state='title',isAI=false,isOnline=false,amHost=false,p1,p2,roundTimer,roundNum,cdTimer,lastTS=0,gameTime=0,matchStats={};
 let pendingIsAI = false;
-let remoteInput = {left:false,right:false,up:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false};
-let lastSentInput = '';
+let remoteInput = {left:false,right:false,up:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false,rage:false};
+
 // Buffer one-shot inputs for online guest so touch taps aren't missed between frames
-let guestInputBuf = {up:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false};
+let guestInputBuf = {up:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false,rage:false};
 
 function initP(){
   p1=mkCroc(160,1,'Gator Gary','gary');
@@ -2183,10 +2193,19 @@ function updateHUD(){
   const p1def1=POWERS[p1?.power1]; const p1def2=POWERS[p1?.power2];
   $('p1pow1').textContent = p1&&p1def1 ? `${p1def1.icon} ${p1.pow1CD>0?p1.pow1CD.toFixed(1)+'s':'READY'}` : '';
   $('p1pow2').textContent = p1&&p1def2 ? `${p1def2.icon} ${p1.pow2CD>0?p1.pow2CD.toFixed(1)+'s':'READY'}` : '';
+  // Rage cooldown
+  const p1rc = p1 ? p1.rageCD : 0;
+  $('p1rage').textContent = p1rc>0 ? `💀 ${p1rc.toFixed(1)}s` : '💀 READY';
+  $('p1rage').className = 'rage-cd' + (p1rc<=0?' ready':'');
   if(!isAI){
     const p2def1=POWERS[p2?.power1]; const p2def2=POWERS[p2?.power2];
     $('p2pow1').textContent = p2&&p2def1 ? `${p2def1.icon} ${p2.pow1CD>0?p2.pow1CD.toFixed(1)+'s':'READY'}` : '';
     $('p2pow2').textContent = p2&&p2def2 ? `${p2def2.icon} ${p2.pow2CD>0?p2.pow2CD.toFixed(1)+'s':'READY'}` : '';
+    const p2rc = p2 ? p2.rageCD : 0;
+    $('p2rage').textContent = p2rc>0 ? `💀 ${p2rc.toFixed(1)}s` : '💀 READY';
+    $('p2rage').className = 'rage-cd' + (p2rc<=0?' ready':'');
+  } else {
+    $('p2rage').textContent = '';
   }
 }
 
@@ -2202,6 +2221,7 @@ function getLocalP1(){
     launch:jp.KeyQ||ts.launch,
     power1:jp.Digit1||ts.power1,
     power2:jp.Digit2||ts.power2,
+    rage:jp.KeyT||ts.rage,
   };
 }
 function getLocalP2(){
@@ -2215,6 +2235,7 @@ function getLocalP2(){
     launch:jp.KeyO||ts2.launch,
     power1:jp.Digit7||ts2.power1,
     power2:jp.Digit8||ts2.power2,
+    rage:jp.Digit0||ts2.rage,
   };
 }
 function getP1(){
@@ -2405,6 +2426,7 @@ function serializeCroc(c){
     dead:c.dead,deathRot:+(c.deathRot.toFixed(2)),
     comebackActive:c.comebackActive,
     rageSuperUsed:c.rageSuperUsed,
+    rageCD:+(c.rageCD.toFixed(1)),
     pow1CD:+(c.pow1CD.toFixed(1)),pow2CD:+(c.pow2CD.toFixed(1)),
     launchCD:+(c.launchCD.toFixed(1)),
     atkAnim:+(c.atkAnim.toFixed(2)),
@@ -2428,6 +2450,7 @@ function applyCrocState(c, s){
   c.dead=s.dead;c.deathRot=s.deathRot;
   c.comebackActive=s.comebackActive;
   c.rageSuperUsed=s.rageSuperUsed;
+  c.rageCD=s.rageCD;
   c.pow1CD=s.pow1CD;c.pow2CD=s.pow2CD;
   c.launchCD=s.launchCD;
   c.atkAnim=s.atkAnim;
@@ -2458,31 +2481,28 @@ function applyGameState(s){
   updateHUD();
 }
 
-// Send local input to host (guest only)
+// Send local input to host (guest only) — sends EVERY frame so held keys stay alive
 function sendLocalInputToHost(){
   if(!isOnline||amHost) return;
   const raw = getLocalP1();
   // Merge buffered one-shot inputs (catches touch taps that resolved between frames)
   const inp = {
-    left:  raw.left,
-    right: raw.right,
-    up:     raw.up     || guestInputBuf.up,
-    attack: raw.attack || guestInputBuf.attack,
-    dash:   raw.dash   || guestInputBuf.dash,
-    parry:  raw.parry  || guestInputBuf.parry,
-    launch: raw.launch || guestInputBuf.launch,
-    power1: raw.power1 || guestInputBuf.power1,
-    power2: raw.power2 || guestInputBuf.power2,
+    left:  raw.left  ? 1 : 0,
+    right: raw.right ? 1 : 0,
+    up:     (raw.up     || guestInputBuf.up)     ? 1 : 0,
+    attack: (raw.attack || guestInputBuf.attack) ? 1 : 0,
+    dash:   (raw.dash   || guestInputBuf.dash)   ? 1 : 0,
+    parry:  (raw.parry  || guestInputBuf.parry)  ? 1 : 0,
+    launch: (raw.launch || guestInputBuf.launch) ? 1 : 0,
+    power1: (raw.power1 || guestInputBuf.power1) ? 1 : 0,
+    power2: (raw.power2 || guestInputBuf.power2) ? 1 : 0,
+    rage:   (raw.rage   || guestInputBuf.rage)   ? 1 : 0,
   };
-  // Clear buffer after reading
+  // Clear one-shot buffer after reading
   guestInputBuf.up=false;guestInputBuf.attack=false;guestInputBuf.dash=false;
-  guestInputBuf.parry=false;guestInputBuf.launch=false;guestInputBuf.power1=false;guestInputBuf.power2=false;
-  // Send if changed, or always send if any one-shot was buffered
-  const key = JSON.stringify(inp);
-  if(key !== lastSentInput){
-    lastSentInput = key;
-    if(typeof MP !== 'undefined') MP.sendInput(inp);
-  }
+  guestInputBuf.parry=false;guestInputBuf.launch=false;guestInputBuf.power1=false;guestInputBuf.power2=false;guestInputBuf.rage=false;
+  // Always send at ~30fps so host has continuous state of held keys
+  if(typeof MP !== 'undefined') MP.sendInput(inp);
 }
 
 // Host sends game state to guest
@@ -2544,7 +2564,19 @@ function showOnlineLobby(){
       if(isOnline && !amHost) applyGameState(s);
     };
     MP.onOpponentInput = (inp) => {
-      if(isOnline && amHost) remoteInput = inp;
+      if(isOnline && amHost){
+        // Full replacement — guest sends complete snapshot every frame
+        remoteInput.left   = !!inp.left;
+        remoteInput.right  = !!inp.right;
+        remoteInput.up     = !!inp.up;
+        remoteInput.attack = !!inp.attack;
+        remoteInput.dash   = !!inp.dash;
+        remoteInput.parry  = !!inp.parry;
+        remoteInput.launch = !!inp.launch;
+        remoteInput.power1 = !!inp.power1;
+        remoteInput.power2 = !!inp.power2;
+        remoteInput.rage   = !!inp.rage;
+      }
     };
     MP.onError = (msg) => {
       document.getElementById('lobby-error').textContent = msg;
@@ -2554,27 +2586,23 @@ function showOnlineLobby(){
       document.getElementById('lobby-create').disabled = true;
       document.getElementById('lobby-join').disabled = true;
     };
-    MP.connect();
-    // Wait a bit for connection
-    setTimeout(()=>{
-      if(MP.isConnected()){
-        document.getElementById('lobby-status').textContent = 'Connected! Create or join a room.';
-        document.getElementById('lobby-create').disabled = false;
-        document.getElementById('lobby-join').disabled = false;
-      } else {
-        document.getElementById('lobby-status').textContent = 'Connecting… please wait';
-        // Retry check
-        setTimeout(()=>{
-          if(MP.isConnected()){
-            document.getElementById('lobby-status').textContent = 'Connected!';
-            document.getElementById('lobby-create').disabled = false;
-            document.getElementById('lobby-join').disabled = false;
-          } else {
-            document.getElementById('lobby-error').textContent = 'Could not connect to server. Is the server running?';
-          }
-        }, 3000);
-      }
-    }, 800);
+    // Connect (or reuse existing connection)
+    if(MP.isConnected()){
+      document.getElementById('lobby-status').textContent = 'Connected! Create or join a room.';
+      document.getElementById('lobby-create').disabled = false;
+      document.getElementById('lobby-join').disabled = false;
+    } else {
+      MP.connect().then((ok) => {
+        if(ok){
+          document.getElementById('lobby-status').textContent = 'Connected! Create or join a room.';
+          document.getElementById('lobby-create').disabled = false;
+          document.getElementById('lobby-join').disabled = false;
+        } else {
+          document.getElementById('lobby-error').textContent = 'Could not connect to server. Check your connection and try again.';
+          document.getElementById('lobby-status').textContent = 'Disconnected';
+        }
+      });
+    }
   } else {
     document.getElementById('lobby-error').textContent = 'Multiplayer module not loaded.';
   }
@@ -2593,6 +2621,8 @@ function launchOnlineGame(){
   // Use default loadout for online (skip loadout screen for simplicity)
   loadout.p1 = {power1:'freeze',power2:'shotgun',skin:'default'};
   loadout.p2 = {power1:'lightning',power2:'tornado',skin:'default'};
+  // Notify server that game is starting
+  if(typeof MP !== 'undefined') MP.sendGameStart();
   startGame(false);
 }
 
@@ -2698,10 +2728,12 @@ function gameLoop(now){
       updateHUD();
     }
     if(state==='roundEnd'){updateCroc(p1,{},p2,dt);updateCroc(p2,{},p1,dt);updateHUD()}
-    // Host: clear one-shot remote inputs after consumption so they don't repeat
+    // Host: clear ONLY one-shot actions from remote input (NOT held directional keys)
+    // left/right are continuous — they persist until the next input message updates them
     if(isOnline && amHost){
       remoteInput.up=false;remoteInput.attack=false;remoteInput.dash=false;
-      remoteInput.parry=false;remoteInput.launch=false;remoteInput.power1=false;remoteInput.power2=false;
+      remoteInput.parry=false;remoteInput.launch=false;remoteInput.power1=false;remoteInput.power2=false;remoteInput.rage=false;
+      // left and right are NOT cleared — they stay until next remoteInput update
       hostBroadcastState();
     }
   }
@@ -2729,8 +2761,8 @@ function gameLoop(now){
 
   ctx.restore();
   for(const k in jp)delete jp[k];
-  ts.attack=0;ts.dash=0;ts.parry=0;ts.launch=0;ts.power1=0;ts.power2=0;
-  ts2.attack=0;ts2.dash=0;ts2.parry=0;ts2.launch=0;ts2.power1=0;ts2.power2=0;
+  ts.attack=0;ts.dash=0;ts.parry=0;ts.launch=0;ts.power1=0;ts.power2=0;ts.rage=0;
+  ts2.attack=0;ts2.dash=0;ts2.parry=0;ts2.launch=0;ts2.power1=0;ts2.power2=0;ts2.rage=0;
 }
 
 // ─── BOOT ───
@@ -2745,23 +2777,71 @@ loadImages(()=>{
   }
   requestAnimationFrame(gameLoop);
 
-  // Auto-join if ?room=XXXX in URL
+  // Auto-join if ?room=XXXX in URL (P2 opened invite link)
   const urlParams = new URLSearchParams(window.location.search);
   const autoRoom = urlParams.get('room');
-  if(autoRoom && autoRoom.length === 4){
+  if(autoRoom && autoRoom.length >= 4){
     initAudio();
-    showOnlineLobby();
-    // Wait for WebSocket connection, then auto-join
-    const tryJoin = () => {
-      if(typeof MP !== 'undefined' && MP.isConnected()){
-        MP.joinRoom(autoRoom.toUpperCase());
-        // Clean URL
-        if(window.history.replaceState) window.history.replaceState({}, '', location.pathname);
-      } else {
-        setTimeout(tryJoin, 500);
-      }
-    };
-    setTimeout(tryJoin, 1200);
+    // Show lobby and auto-join after connection is ready
+    const el = document.getElementById('online-lobby');
+    if(el) el.classList.remove('hidden');
+    document.getElementById('title-screen').classList.add('hidden');
+    document.getElementById('lobby-status').textContent = 'Joining room ' + autoRoom.toUpperCase() + '...';
+    document.getElementById('lobby-actions').style.display = 'none';
+    document.getElementById('lobby-waiting').style.display = 'none';
+    document.getElementById('lobby-error').textContent = '';
+    
+    // Set up callbacks then connect
+    if(typeof MP !== 'undefined'){
+      MP.onJoinedRoom = (num, code) => {
+        amHost = false;
+        document.getElementById('lobby-status').textContent = 'Joined room ' + code + '! Starting...';
+        document.getElementById('lobby-waiting').style.display = 'block';
+        document.getElementById('lobby-waiting').querySelector('div').textContent = 'Connected! Starting game...';
+        setTimeout(() => launchOnlineGame(), 1200);
+      };
+      MP.onOpponentJoined = () => {
+        document.getElementById('lobby-waiting').querySelector('div').textContent = 'Opponent joined! Starting...';
+        setTimeout(() => launchOnlineGame(), 800);
+      };
+      MP.onOpponentLeft = () => {
+        if(state==='title') return;
+        isOnline=false;state='title';
+        document.getElementById('title-screen').classList.remove('hidden');
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('result-screen').classList.add('hidden');
+        document.getElementById('loadout-screen').classList.add('hidden');
+        document.getElementById('online-lobby').classList.add('hidden');
+        hideTouchControls();hideVideo();
+        slam('OPPONENT LEFT','#f87171',2);
+      };
+      MP.onStateUpdate = (s) => { if(isOnline && !amHost) applyGameState(s); };
+      MP.onOpponentInput = (inp) => {
+        if(isOnline && amHost){
+          remoteInput.left=!!inp.left;remoteInput.right=!!inp.right;remoteInput.up=!!inp.up;
+          remoteInput.attack=!!inp.attack;remoteInput.dash=!!inp.dash;remoteInput.parry=!!inp.parry;
+          remoteInput.launch=!!inp.launch;remoteInput.power1=!!inp.power1;remoteInput.power2=!!inp.power2;
+          remoteInput.rage=!!inp.rage;
+        }
+      };
+      MP.onError = (msg) => {
+        document.getElementById('lobby-error').textContent = msg;
+      };
+      MP.onDisconnect = () => {
+        document.getElementById('lobby-status').textContent = 'Disconnected';
+      };
+
+      MP.connect().then((ok) => {
+        if(ok){
+          MP.joinRoom(autoRoom.toUpperCase());
+          // Clean URL
+          if(window.history.replaceState) window.history.replaceState({}, '', location.pathname);
+        } else {
+          document.getElementById('lobby-error').textContent = 'Could not connect to server.';
+          document.getElementById('lobby-status').textContent = 'Connection failed';
+        }
+      });
+    }
   }
 });
 

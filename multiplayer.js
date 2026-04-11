@@ -1,20 +1,21 @@
-// multiplayer.js — Online Multiplayer Client for Croc Clash
+// multiplayer.js — Online Multiplayer Client for Croc Clash (v2.0)
 const MP = (() => {
   let ws = null;
   let roomCode = null;
   let playerNum = 0;        // 1 = host, 2 = guest
   let connected = false;
   let retryCount = 0;
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY = 2000;
-  const PING_INTERVAL = 25000;
-  const STATE_THROTTLE_MS = 50; // ~20 fps
+  const MAX_RETRIES = 5;
+  const RETRY_DELAY = 1500;
+  const PING_INTERVAL = 20000;
+  const INPUT_RATE_MS = 33;  // ~30 fps input send rate for guest
 
   let pingTimer = null;
-  let lastStateSent = 0;
+  let lastInputSent = 0;
   let pendingState = null;
   let stateFlushTimer = null;
   let intentionalClose = false;
+  let connectResolve = null; // Promise resolver for connect()
 
   // Callbacks
   let onOpponentInput = null;
@@ -25,15 +26,19 @@ const MP = (() => {
   let onJoinedRoom = null;
   let onError = null;
   let onDisconnect = null;
+  let onConnected = null;
+  let onRematch = null;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  // Server URL: set window.CROC_SERVER to override (e.g. Railway URL)
   function getWSUrl() {
+    // If CROC_SERVER is set (e.g. Railway URL), derive WebSocket URL from it
     if (window.CROC_SERVER) {
-      const url = window.CROC_SERVER.replace(/^http/, 'ws');
-      return url.endsWith('/') ? url.slice(0, -1) : url;
+      const base = window.CROC_SERVER.replace(/\/$/, '');
+      // https → wss, http → ws
+      return base.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
     }
+    // Same-origin fallback
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return proto + '//' + location.host;
   }
@@ -53,70 +58,84 @@ const MP = (() => {
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
   }
 
-  function scheduleStateFlush() {
-    if (stateFlushTimer) return;
-    const now = Date.now();
-    const elapsed = now - lastStateSent;
-    const delay = elapsed >= STATE_THROTTLE_MS ? 0 : STATE_THROTTLE_MS - elapsed;
-    stateFlushTimer = setTimeout(() => {
-      stateFlushTimer = null;
-      if (pendingState !== null) {
-        send({ t: 'state', s: pendingState });
-        pendingState = null;
-        lastStateSent = Date.now();
-      }
-    }, delay);
-  }
-
   // ── Connection ─────────────────────────────────────────────────────────────
 
+  /** Connect to WebSocket server. Returns a promise that resolves when connected. */
   function connect() {
     intentionalClose = false;
-    _connect();
+    retryCount = 0;
+    return new Promise((resolve) => {
+      connectResolve = resolve;
+      _connect();
+    });
   }
 
   function _connect() {
-    if (ws) { try { ws.close(); } catch (_) {} }
+    // Clean up old socket
+    if (ws) {
+      try { ws.onclose = null; ws.onerror = null; ws.close(); } catch (_) {}
+      ws = null;
+    }
+
+    const url = getWSUrl();
+    console.log('[MP] Connecting to', url);
 
     try {
-      ws = new WebSocket(getWSUrl());
+      ws = new WebSocket(url);
     } catch (e) {
       console.error('[MP] WebSocket creation failed:', e);
-      if (onError) onError('Failed to create WebSocket connection.');
+      if (onError) onError('Failed to connect. Check your internet connection.');
+      if (connectResolve) { connectResolve(false); connectResolve = null; }
       return;
     }
 
     ws.onopen = () => {
       connected = true;
       retryCount = 0;
-      console.log('[MP] Connected to server.');
+      console.log('[MP] WebSocket open');
       startPing();
+      // Don't resolve yet — wait for 'welcome' message from server
     };
 
     ws.onmessage = (evt) => {
       let msg;
-      try { msg = JSON.parse(evt.data); } catch (e) { console.warn('[MP] Invalid JSON:', evt.data); return; }
+      try { msg = JSON.parse(evt.data); } catch (e) { return; }
+      
+      // Handle welcome message (connection fully ready)
+      if (msg.t === 'welcome') {
+        console.log('[MP] Connected and ready');
+        if (connectResolve) { connectResolve(true); connectResolve = null; }
+        if (onConnected) onConnected();
+        return;
+      }
+      
       handleMessage(msg);
     };
 
     ws.onerror = (e) => {
-      console.warn('[MP] WebSocket error:', e);
+      console.warn('[MP] WebSocket error');
     };
 
     ws.onclose = (evt) => {
+      const wasConnected = connected;
       connected = false;
       stopPing();
-      console.log('[MP] Disconnected (code=%d, intentional=%s).', evt.code, intentionalClose);
+      console.log('[MP] Disconnected (code=%d, intentional=%s)', evt.code, intentionalClose);
+      
       if (intentionalClose) {
+        if (connectResolve) { connectResolve(false); connectResolve = null; }
         if (onDisconnect) onDisconnect();
         return;
       }
+      
       if (retryCount < MAX_RETRIES) {
         retryCount++;
-        console.log('[MP] Reconnecting… attempt %d/%d', retryCount, MAX_RETRIES);
-        setTimeout(_connect, RETRY_DELAY);
+        const delay = RETRY_DELAY * Math.min(retryCount, 3);
+        console.log('[MP] Reconnecting… attempt %d/%d in %dms', retryCount, MAX_RETRIES, delay);
+        setTimeout(_connect, delay);
       } else {
         console.warn('[MP] Max reconnect attempts reached.');
+        if (connectResolve) { connectResolve(false); connectResolve = null; }
         if (onDisconnect) onDisconnect();
         if (onError) onError('Connection lost. Please refresh and try again.');
       }
@@ -147,12 +166,23 @@ const MP = (() => {
         if (onOpponentLeft) onOpponentLeft();
         break;
 
-      case 'opponent_input':
+      case 'input':
         if (onOpponentInput) onOpponentInput(msg.inp);
         break;
 
       case 'state':
         if (onStateUpdate) onStateUpdate(msg.s);
+        break;
+
+      case 'rematch':
+        if (onRematch) onRematch();
+        break;
+
+      case 'room_closed':
+        console.log('[MP] Room closed:', msg.reason);
+        roomCode = null;
+        playerNum = 0;
+        if (onOpponentLeft) onOpponentLeft();
         break;
 
       case 'error':
@@ -161,11 +191,10 @@ const MP = (() => {
         break;
 
       case 'pong':
-        // keepalive acknowledgement — no action needed
         break;
 
       default:
-        console.warn('[MP] Unknown message type:', msg.t);
+        console.warn('[MP] Unknown message:', msg.t);
     }
   }
 
@@ -178,30 +207,40 @@ const MP = (() => {
 
   function joinRoom(code) {
     if (!connected) { if (onError) onError('Not connected to server.'); return; }
-    if (!code || typeof code !== 'string' || code.trim() === '') {
-      if (onError) onError('Invalid room code.');
+    if (!code || typeof code !== 'string' || code.trim().length < 4) {
+      if (onError) onError('Enter a valid 4-character room code.');
       return;
     }
     send({ t: 'join', code: code.trim().toUpperCase() });
   }
 
-  /** P2 only — send input snapshot to host */
+  /** P2 only — send input snapshot to host at fixed rate */
   function sendInput(inp) {
     if (!connected || playerNum !== 2) return;
+    // Always send — the host needs continuous updates for held keys
     send({ t: 'input', inp });
   }
 
-  /** P1 only — throttled state broadcast to guest */
+  /** P1 only — broadcast game state to guest */
   function sendState(state) {
     if (!connected || playerNum !== 1) return;
-    pendingState = state;
-    scheduleStateFlush();
+    // Send immediately — the game loop already throttles to ~20fps
+    send({ t: 'state', s: state });
+  }
+
+  function sendRematch() {
+    send({ t: 'rematch' });
+  }
+
+  function sendGameStart() {
+    send({ t: 'game_start' });
   }
 
   function disconnect() {
     intentionalClose = true;
     stopPing();
     if (stateFlushTimer) { clearTimeout(stateFlushTimer); stateFlushTimer = null; }
+    send({ t: 'leave' });
     if (ws) { try { ws.close(1000, 'Client disconnect'); } catch (_) {} ws = null; }
     connected = false;
     roomCode = null;
@@ -209,13 +248,15 @@ const MP = (() => {
   }
 
   function isHost()       { return playerNum === 1; }
+  function isGuest()      { return playerNum === 2; }
   function isConnected()  { return connected; }
   function getRoom()      { return roomCode; }
   function getPlayerNum() { return playerNum; }
 
   return {
     connect, createRoom, joinRoom, sendInput, sendState, disconnect,
-    isHost, isConnected, getRoom, getPlayerNum,
+    sendRematch, sendGameStart,
+    isHost, isGuest, isConnected, getRoom, getPlayerNum,
     set onOpponentInput(fn)  { onOpponentInput  = fn; },
     set onStateUpdate(fn)    { onStateUpdate    = fn; },
     set onOpponentJoined(fn) { onOpponentJoined = fn; },
@@ -224,5 +265,7 @@ const MP = (() => {
     set onJoinedRoom(fn)     { onJoinedRoom     = fn; },
     set onError(fn)          { onError          = fn; },
     set onDisconnect(fn)     { onDisconnect     = fn; },
+    set onConnected(fn)      { onConnected      = fn; },
+    set onRematch(fn)        { onRematch        = fn; },
   };
 })();

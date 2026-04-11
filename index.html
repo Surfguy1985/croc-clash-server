@@ -98,6 +98,9 @@
     .launch-cd{font-family:var(--fh);font-size:12px;color:var(--mut);letter-spacing:.08em;margin-top:2px}
     .launch-cd.ready{color:var(--gold);text-shadow:0 0 10px rgba(255,215,64,.4);animation:launchPulse 1s ease infinite alternate}
     @keyframes launchPulse{from{opacity:.7}to{opacity:1}}
+    .rage-cd{font-family:var(--fh);font-size:12px;color:var(--mut);letter-spacing:.08em;margin-top:2px}
+    .rage-cd.ready{color:#ff3d00;text-shadow:0 0 12px rgba(255,61,0,.5);animation:rageCDPulse 1s ease infinite alternate}
+    @keyframes rageCDPulse{from{opacity:.7;text-shadow:0 0 8px rgba(255,61,0,.4)}to{opacity:1;text-shadow:0 0 18px rgba(255,61,0,.6)}}
     .pow-cd-row{display:flex;gap:6px;font-family:var(--fh);font-size:10px;letter-spacing:.06em;color:var(--mut);margin-top:2px;flex-wrap:wrap}
     .phud.right .pow-cd-row{justify-content:flex-end}
 
@@ -245,6 +248,8 @@
     .abtn.la{background:linear-gradient(135deg,rgba(255,215,64,.4),rgba(245,158,11,.5));box-shadow:0 2px 12px rgba(255,215,64,.2),0 1px 0 rgba(255,255,255,.15) inset}
     .abtn.pw1{background:linear-gradient(135deg,rgba(147,197,253,.35),rgba(59,130,246,.45));box-shadow:0 2px 10px rgba(147,197,253,.2),0 1px 0 rgba(255,255,255,.12) inset}
     .abtn.pw2{background:linear-gradient(135deg,rgba(244,114,182,.3),rgba(190,24,93,.4))}
+    .abtn.rg{background:linear-gradient(135deg,rgba(255,61,0,.5),rgba(200,20,0,.6));box-shadow:0 2px 14px rgba(255,61,0,.3),0 1px 0 rgba(255,255,255,.15) inset;min-width:110px}
+    .abtn.rg .plabel{font-weight:700;letter-spacing:.06em}
 
     /* AI mode: single-player controls (bigger buttons) */
     #touch-controls .tdpad{width:140px;height:140px}
@@ -274,6 +279,7 @@
       .hstats{font-size:9px}.launch-cd{font-size:9px}
       .combo-hud{font-size:10px}.htimer{font-size:26px}.hround{font-size:10px;letter-spacing:.06em}
       .pow-cd-row{font-size:8px}
+      .rage-cd{font-size:9px}
       .tdpad{width:100px;height:100px}
       .dpad-btn{width:36px;height:36px;border-radius:10px;font-size:14px}
       .abtn{width:46px;height:42px;border-radius:12px;font-size:8px}
@@ -310,9 +316,9 @@
       <div class="tkeys">
         <b>P1:</b> WASD move · <b>F</b> smack · <b>G</b> dash · <b>R</b> parry · <b>Q</b> 🎯 launch · <b>1</b> Power 1 · <b>2</b> Power 2<br/>
         <b>P2:</b> Arrows move · <b>L</b> smack · <b>K</b> dash · <b>P</b> parry · <b>O</b> 🎯 launch · <b>7</b> Power 1 · <b>8</b> Power 2<br/>
-        <b>Rage Super:</b> Press both power keys at once when at 1 HP!
+        <b>T</b> Rage (P1) · <b>0</b> Rage (P2) — 15s cooldown mega bomb
       </div>
-      <div class="tver">V8.0 — ONLINE MULTIPLAYER</div>
+      <div class="tver">V8.1 — RAGE BUTTON</div>
     </div>
   </div>
 
@@ -327,6 +333,7 @@
       <div class="hstats" id="p1s">Wins 0</div>
       <div class="launch-cd" id="p1launch">🎯 READY</div>
       <div class="pow-cd-row"><span id="p1pow1"></span><span id="p1pow2"></span></div>
+      <div class="rage-cd ready" id="p1rage">💀 READY</div>
       <div class="combo-hud" id="p1combo"></div>
     </div>
     <div class="hcenter">
@@ -339,6 +346,7 @@
       <div class="hstats" id="p2s">Wins 0</div>
       <div class="launch-cd" id="p2launch">🎯 READY</div>
       <div class="pow-cd-row"><span id="p2pow1"></span><span id="p2pow2"></span></div>
+      <div class="rage-cd ready" id="p2rage">💀 READY</div>
       <div class="combo-hud" id="p2combo"></div>
     </div>
   </div>
@@ -382,6 +390,9 @@
       <div class="arow">
         <div class="abtn pw2" id="touch-power2" data-action="power2"><span class="icon">🎷</span><span class="plabel">POWER2</span></div>
       </div>
+      <div class="arow">
+        <div class="abtn rg" data-action="rage"><span class="icon">💀</span><span class="plabel">RAGE</span></div>
+      </div>
     </div>
   </div>
 
@@ -410,6 +421,9 @@
           <div class="abtn pw1" data-p="1" data-action="power1" id="tp1-pow1"><span class="icon">❄️</span><span class="plabel">PWR1</span></div>
           <div class="abtn pw2" data-p="1" data-action="power2" id="tp1-pow2"><span class="icon">🎷</span><span class="plabel">PWR2</span></div>
         </div>
+        <div class="arow">
+          <div class="abtn rg" data-p="1" data-action="rage"><span class="icon">💀</span><span class="plabel">RAGE</span></div>
+        </div>
       </div>
     </div>
     <!-- P2 (RIGHT HALF) -->
@@ -427,6 +441,9 @@
         <div class="arow">
           <div class="abtn pw1" data-p="2" data-action="power1" id="tp2-pow1"><span class="icon">⚡</span><span class="plabel">PWR1</span></div>
           <div class="abtn pw2" data-p="2" data-action="power2" id="tp2-pow2"><span class="icon">❓</span><span class="plabel">PWR2</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn rg" data-p="2" data-action="rage"><span class="icon">💀</span><span class="plabel">RAGE</span></div>
         </div>
       </div>
       <div class="tdpad">
