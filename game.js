@@ -767,7 +767,7 @@ function initVideoEl(el){
   el.muted = true; el.volume = 0;
   el.addEventListener('ended', () => { if(!matchIntroPlaying) hideVideo(); });
   el.addEventListener('error', () => { if(!matchIntroPlaying) hideVideo(); });
-  // ALL videos are unskippable — no click/tap to dismiss
+  // All videos play to completion — no tap/click to dismiss
   el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
   el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
   el.addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
@@ -823,11 +823,11 @@ function playSpecialVideo(category, duration, locked){
   const incoming = (activeVidSlot === 'A') ? videoElB : videoEl;
   const outgoing = (activeVidSlot === 'A') ? videoEl : videoElB;
   if(videoPlaying && !locked && outgoing.getAttribute('data-orig-src') === src) return;
-  videoLocked = true; // all videos are now unskippable
+  videoLocked = true; // ALL videos are unskippable — must play to completion
   if(!locked) videoCooldown = VIDEO_COOLDOWN_SEC;
   incoming.style.opacity = '0';
   incoming.style.display = 'block';
-  incoming.style.pointerEvents = 'none'; // all videos unskippable
+  incoming.style.pointerEvents = 'none'; // block all interaction during playback
 
   safePlay(incoming, src).then(ok => {
     if(!ok){ incoming.style.display = 'none'; return; }
