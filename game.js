@@ -525,7 +525,19 @@ addEventListener('resize', resize); resize();
 
 // ─── INPUT ───
 const keys = {}, jp = {};
-document.addEventListener('keydown', e => { if(!keys[e.code]) jp[e.code]=true; keys[e.code]=true; e.preventDefault(); });
+document.addEventListener('keydown', e => {
+  if(!keys[e.code]) jp[e.code]=true; keys[e.code]=true; e.preventDefault();
+  // Buffer one-shot actions for online guest (so they're not lost between frames)
+  if(typeof guestInputBuf!=='undefined'){
+    if(e.code==='KeyW') guestInputBuf.up=true;
+    if(e.code==='KeyF') guestInputBuf.attack=true;
+    if(e.code==='KeyG') guestInputBuf.dash=true;
+    if(e.code==='KeyR') guestInputBuf.parry=true;
+    if(e.code==='KeyQ') guestInputBuf.launch=true;
+    if(e.code==='Digit1') guestInputBuf.power1=true;
+    if(e.code==='Digit2') guestInputBuf.power2=true;
+  }
+});
 document.addEventListener('keyup', e => { keys[e.code]=false; });
 
 // Touch state — P1 (single-player controls + 2P P1 half)
@@ -536,12 +548,16 @@ const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:
 // Single-player touch controls (no data-p attribute)
 document.querySelectorAll('#touch-controls .dpad-btn').forEach(b => {
   const d = b.dataset.dir;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts[d]=1; }, {passive:false});
+  b.addEventListener('touchstart', e => { e.preventDefault(); ts[d]=1;
+    if(typeof guestInputBuf!=='undefined' && (d==='up')) guestInputBuf.up=true;
+  }, {passive:false});
   b.addEventListener('touchend',   e => { e.preventDefault(); ts[d]=0; }, {passive:false});
 });
 document.querySelectorAll('#touch-controls .abtn').forEach(b => {
   const a = b.dataset.action;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts[a]=1; }, {passive:false});
+  b.addEventListener('touchstart', e => { e.preventDefault(); ts[a]=1;
+    if(typeof guestInputBuf!=='undefined') guestInputBuf[a]=true;
+  }, {passive:false});
   b.addEventListener('touchend',   e => { e.preventDefault(); ts[a]=0; }, {passive:false});
 });
 
@@ -2037,6 +2053,8 @@ let state='title',isAI=false,isOnline=false,amHost=false,p1,p2,roundTimer,roundN
 let pendingIsAI = false;
 let remoteInput = {left:false,right:false,up:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false};
 let lastSentInput = '';
+// Buffer one-shot inputs for online guest so touch taps aren't missed between frames
+let guestInputBuf = {up:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false};
 
 function initP(){
   p1=mkCroc(160,1,'Gator Gary','gary');
@@ -2443,7 +2461,23 @@ function applyGameState(s){
 // Send local input to host (guest only)
 function sendLocalInputToHost(){
   if(!isOnline||amHost) return;
-  const inp = getLocalP1();
+  const raw = getLocalP1();
+  // Merge buffered one-shot inputs (catches touch taps that resolved between frames)
+  const inp = {
+    left:  raw.left,
+    right: raw.right,
+    up:     raw.up     || guestInputBuf.up,
+    attack: raw.attack || guestInputBuf.attack,
+    dash:   raw.dash   || guestInputBuf.dash,
+    parry:  raw.parry  || guestInputBuf.parry,
+    launch: raw.launch || guestInputBuf.launch,
+    power1: raw.power1 || guestInputBuf.power1,
+    power2: raw.power2 || guestInputBuf.power2,
+  };
+  // Clear buffer after reading
+  guestInputBuf.up=false;guestInputBuf.attack=false;guestInputBuf.dash=false;
+  guestInputBuf.parry=false;guestInputBuf.launch=false;guestInputBuf.power1=false;guestInputBuf.power2=false;
+  // Send if changed, or always send if any one-shot was buffered
   const key = JSON.stringify(inp);
   if(key !== lastSentInput){
     lastSentInput = key;
@@ -2664,8 +2698,12 @@ function gameLoop(now){
       updateHUD();
     }
     if(state==='roundEnd'){updateCroc(p1,{},p2,dt);updateCroc(p2,{},p1,dt);updateHUD()}
-    // Host broadcasts state to guest
-    if(isOnline && amHost) hostBroadcastState();
+    // Host: clear one-shot remote inputs after consumption so they don't repeat
+    if(isOnline && amHost){
+      remoteInput.up=false;remoteInput.attack=false;remoteInput.dash=false;
+      remoteInput.parry=false;remoteInput.launch=false;remoteInput.power1=false;remoteInput.power2=false;
+      hostBroadcastState();
+    }
   }
 
   // RENDER
