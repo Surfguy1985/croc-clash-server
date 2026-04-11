@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
-  <title>CROC CLASH V6.0 — Branson Pillow Brawl</title>
+  <title>CROC CLASH V8.0 — Branson Pillow Brawl</title>
+  <script src="https://connect.tiktok-minis.com/game/sdk.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
@@ -255,6 +256,17 @@
     #touch-controls .abtns{gap:6px}
 
     @media(pointer:coarse){#touch-controls{display:flex}}
+    /* ══════ ONLINE LOBBY ══════ */
+    #online-lobby{
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      z-index:110;background:rgba(5,5,16,.92);backdrop-filter:blur(12px);
+    }
+    #online-lobby.hidden{display:none}
+    #lobby-code-input::placeholder{color:rgba(255,255,255,.2)}
+    #lobby-code-input:focus{border-color:var(--acc);box-shadow:0 0 16px rgba(251,191,36,.15)}
+    .lobby-dots{animation:lobbyPulse 1.5s ease infinite}
+    @keyframes lobbyPulse{0%,100%{opacity:.3}50%{opacity:1}}
+
     @media(max-width:600px){
       .pip{width:14px;height:14px;border-radius:3px}.hp-pips{gap:3px}
       #hud{padding:8px 6px}.phud{min-width:0;max-width:40%}
@@ -291,6 +303,7 @@
       <div id="title-streak"></div>
       <div id="title-totalwins"></div>
       <div class="tbtns">
+        <button class="btn btn-primary" id="btn-online">🌐 ONLINE</button>
         <button class="btn btn-primary" id="btn-pvp">🐊 2 Player 🐊</button>
         <button class="btn btn-primary" id="btn-ai">🐊 vs AI 🤖</button>
       </div>
@@ -299,7 +312,7 @@
         <b>P2:</b> Arrows move · <b>L</b> smack · <b>K</b> dash · <b>P</b> parry · <b>O</b> 🎯 launch · <b>7</b> Power 1 · <b>8</b> Power 2<br/>
         <b>Rage Super:</b> Press both power keys at once when at 1 HP!
       </div>
-      <div class="tver">V6.0 — PRODUCTION</div>
+      <div class="tver">V8.0 — ONLINE MULTIPLAYER</div>
     </div>
   </div>
 
@@ -426,6 +439,32 @@
     </div>
   </div>
 
+  <!-- ══════ ONLINE LOBBY ══════ -->
+  <div id="online-lobby" class="hidden">
+    <div class="res-bg"></div>
+    <div class="res-content glass" style="padding:32px 40px;gap:18px;min-width:320px;max-width:440px">
+      <div style="font-family:var(--fh);font-size:clamp(1.6rem,4vw,2.4rem);letter-spacing:.08em;text-align:center;color:var(--acc)">🌐 ONLINE MATCH</div>
+      <div id="lobby-status" style="font-family:var(--fd);font-size:14px;color:var(--mut);text-align:center;min-height:20px">Connecting…</div>
+      <div id="lobby-room-code" style="font-family:var(--fh);font-size:clamp(2rem,6vw,3.4rem);letter-spacing:.2em;color:var(--txt);text-align:center;display:none"></div>
+      <div id="lobby-actions" style="display:flex;flex-direction:column;gap:12px;align-items:center;width:100%">
+        <button class="btn btn-primary" id="lobby-create" style="width:100%" disabled>CREATE ROOM</button>
+        <div style="font-family:var(--fd);font-size:12px;color:var(--mut);letter-spacing:.15em">— OR —</div>
+        <div style="display:flex;gap:8px;width:100%">
+          <input id="lobby-code-input" type="text" maxlength="4" placeholder="CODE" style="flex:1;font-family:var(--fh);font-size:22px;letter-spacing:.25em;text-align:center;padding:12px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;outline:none;text-transform:uppercase" />
+          <button class="btn btn-primary" id="lobby-join" style="padding:12px 24px" disabled>JOIN</button>
+        </div>
+      </div>
+      <div id="lobby-waiting" style="display:none;text-align:center">
+        <div style="font-family:var(--fd);font-size:14px;color:var(--p1);margin-bottom:8px">Waiting for opponent…</div>
+        <div class="lobby-dots" style="font-size:24px;color:var(--acc)">⏳</div>
+      </div>
+      <div id="lobby-error" style="font-family:var(--fd);font-size:13px;color:#f87171;text-align:center;min-height:16px"></div>
+      <button class="btn" id="lobby-back" style="font-size:12px;padding:10px 28px">← BACK</button>
+    </div>
+  </div>
+
+  <script src="tiktok-sdk.js"></script>
+  <script src="multiplayer.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

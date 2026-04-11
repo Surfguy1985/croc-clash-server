@@ -1,8 +1,7 @@
 // ============================================================
-//  CROC CLASH — PRODUCTION v6.0
-//  Real sprite-frame swing animation + 2-player mobile touch
-//  controls. Full frame-based attack with AI-generated swing
-//  poses (wind-up, mid-swing, follow-through).
+//  CROC CLASH — PRODUCTION v8.0
+//  Online Multiplayer + TikTok Mini Game + Pillow Combat
+//  WebSocket rooms, host/guest sync, TikTok SDK integration.
 // ============================================================
 (() => {
 'use strict';
@@ -26,6 +25,7 @@ const COMEBACK_TH = 2;
 
 // Special power cooldowns
 const CD_FREEZE = 8, CD_SAX = 10, CD_LIGHTNING = 12, CD_MYSTERY = 15, CD_TORNADO = 4, CD_TAIL = 1.4;
+const CD_SHOTGUN = 5, CD_UPPERCUT = 6, CD_BOOMERANG = 7, CD_RAPIDFIRE = 4;
 
 // ─── JUICE ───
 const HS_LIGHT = 0.06, HS_HEAVY = 0.12, HS_KO = 0.3, HS_PARRY = 0.1, HS_TAIL = 0.16, HS_LAUNCH = 0.2;
@@ -33,12 +33,16 @@ const SLO_DUR = 0.8, SLO_SCALE = 0.15, TRAUMA_DECAY = 1.8;
 
 // ─── POWER DEFINITIONS ───
 const POWERS = {
-  freeze:   { name:'Freeze Ball',  key:'1', icon:'❄️',  cd: CD_FREEZE,    desc:'Freezes opponent 3s' },
-  sax:      { name:'Saxophone',    key:'2', icon:'🎷',  cd: CD_SAX,       desc:'Dizzy blast wave' },
-  lightning:{ name:'Lightning',    key:'3', icon:'⚡',  cd: CD_LIGHTNING,  desc:'Sky strike 1 HP' },
-  mystery:  { name:'Mystery Box',  key:'4', icon:'❓',  cd: CD_MYSTERY,   desc:'Random power up!' },
-  tornado:  { name:'Tornado',      key:'5', icon:'🌪️', cd: CD_TORNADO,   desc:'Spin dash attack' },
-  tailwhip: { name:'Tail Whip',   key:'6', icon:'🦎',  cd: CD_TAIL,      desc:'Heavy tail smash' },
+  freeze:    { name:'Freeze Ball',    key:'1', icon:'❄️',  cd: CD_FREEZE,    desc:'Freezes opponent 3s' },
+  sax:       { name:'Saxophone',      key:'2', icon:'🎷',  cd: CD_SAX,       desc:'Dizzy blast wave' },
+  lightning: { name:'Lightning',      key:'3', icon:'⚡',  cd: CD_LIGHTNING,  desc:'Sky strike 1 HP' },
+  mystery:   { name:'Mystery Box',    key:'4', icon:'❓',  cd: CD_MYSTERY,   desc:'Random power up!' },
+  tornado:   { name:'Tornado',        key:'5', icon:'🌪️', cd: CD_TORNADO,   desc:'Spin dash attack' },
+  tailwhip:  { name:'Tail Whip',     key:'6', icon:'🦎',  cd: CD_TAIL,      desc:'Heavy tail smash' },
+  shotgun:   { name:'Pillow Shotgun', key:'7', icon:'💥',  cd: CD_SHOTGUN,   desc:'5-pillow spread blast' },
+  uppercut:  { name:'Pillow Uppercut',key:'8', icon:'🥊',  cd: CD_UPPERCUT,  desc:'Sky-launch melee' },
+  boomerang: { name:'Boomerang',      key:'9', icon:'🪃',  cd: CD_BOOMERANG, desc:'Returns to sender' },
+  rapidfire: { name:'Rapid Fire',     key:'0', icon:'🔥',  cd: CD_RAPIDFIRE, desc:'Pillow minigun burst' },
 };
 const POWER_KEYS = Object.keys(POWERS);
 
@@ -137,62 +141,332 @@ function getSpriteForCroc(c) {
   return images[key] || images[c.charKey];
 }
 
-// ─── AUDIO ENGINE ───
+// ─── PREMIUM AUDIO ENGINE v2.0 ───
+// Layered multi-voice synthesis with noise bursts, filtered sweeps,
+// proper ADSR envelopes and spatial panning for premium arcade feel.
 let actx = null;
+let masterGain = null;
 let crowdGain = null, crowdSource = null;
+
 function initAudio() {
-  if(!actx){ actx = new (window.AudioContext || window.webkitAudioContext)(); }
+  if(!actx){
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = actx.createGain();
+    masterGain.gain.value = 0.85;
+    // Master compressor for punch
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.knee.value = 12;
+    comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.15;
+    masterGain.connect(comp).connect(actx.destination);
+  }
   if(actx.state === 'suspended') actx.resume();
   startCrowdAmbience();
 }
-function tone(f,d,tp='square',v=.1,dl=0){if(!actx)return;try{const t=actx.currentTime+dl;const o=actx.createOscillator(),g=actx.createGain();o.type=tp;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d)}catch(e){}}
+
+// Enhanced tone with ADSR envelope
+function tone(f,d,tp='square',v=.1,dl=0,pan=0){
+  if(!actx||!masterGain)return;
+  try{
+    const t=actx.currentTime+dl;
+    const o=actx.createOscillator(),g=actx.createGain();
+    o.type=tp;o.frequency.setValueAtTime(f,t);
+    // ADSR: quick attack, sustain, exponential release
+    const atk=Math.min(0.008,d*0.1);
+    g.gain.setValueAtTime(0.001,t);
+    g.gain.linearRampToValueAtTime(v,t+atk);
+    g.gain.setValueAtTime(v*0.85,t+atk+0.01);
+    g.gain.exponentialRampToValueAtTime(.001,t+d);
+    // Stereo pan
+    if(pan!==0&&actx.createStereoPanner){
+      const pn=actx.createStereoPanner();
+      pn.pan.value=clamp(pan,-1,1);
+      o.connect(g).connect(pn).connect(masterGain);
+    } else {
+      o.connect(g).connect(masterGain);
+    }
+    o.start(t);o.stop(t+d);
+  }catch(e){}
+}
+
+// Noise burst — percussive impact layer
+function noiseBurst(dur=0.06,vol=0.12,hpFreq=800,lpFreq=5000,dl=0){
+  if(!actx||!masterGain)return;
+  try{
+    const t=actx.currentTime+dl;
+    const bufLen=Math.ceil(actx.sampleRate*dur*2);
+    const buf=actx.createBuffer(1,bufLen,actx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<bufLen;i++) d[i]=(Math.random()*2-1);
+    const src=actx.createBufferSource();src.buffer=buf;
+    const hp=actx.createBiquadFilter();hp.type='highpass';hp.frequency.value=hpFreq;
+    const lp=actx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=lpFreq;
+    const g=actx.createGain();
+    g.gain.setValueAtTime(0.001,t);
+    g.gain.linearRampToValueAtTime(vol,t+0.003);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    src.connect(hp).connect(lp).connect(g).connect(masterGain);
+    src.start(t);src.stop(t+dur);
+  }catch(e){}
+}
+
+// Filtered sweep — whoosh/swoosh layer
+function sweep(startF,endF,dur=0.15,vol=0.08,tp='sawtooth',dl=0){
+  if(!actx||!masterGain)return;
+  try{
+    const t=actx.currentTime+dl;
+    const o=actx.createOscillator(),g=actx.createGain();
+    const lp=actx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3000;lp.Q.value=3;
+    o.type=tp;
+    o.frequency.setValueAtTime(startF,t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(endF,20),t+dur);
+    lp.frequency.setValueAtTime(startF*4,t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(endF*2,60),t+dur);
+    g.gain.setValueAtTime(0.001,t);
+    g.gain.linearRampToValueAtTime(vol,t+dur*0.15);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(lp).connect(g).connect(masterGain);
+    o.start(t);o.stop(t+dur);
+  }catch(e){}
+}
+
+// Sub-bass thump
+function subThump(freq=50,dur=0.25,vol=0.2,dl=0){
+  if(!actx||!masterGain)return;
+  try{
+    const t=actx.currentTime+dl;
+    const o=actx.createOscillator(),g=actx.createGain();
+    o.type='sine';o.frequency.setValueAtTime(freq,t);
+    o.frequency.exponentialRampToValueAtTime(20,t+dur);
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g).connect(masterGain);
+    o.start(t);o.stop(t+dur);
+  }catch(e){}
+}
 
 // ─── CROWD AMBIENCE ───
 function startCrowdAmbience(){
-  if(!actx||crowdSource) return;
+  if(!actx||!masterGain||crowdSource) return;
   try {
     const bufLen = actx.sampleRate * 2;
     const buf = actx.createBuffer(1, bufLen, actx.sampleRate);
     const data = buf.getChannelData(0);
     for(let i=0;i<bufLen;i++) data[i] = Math.random()*2-1;
     const src = actx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
+    src.buffer = buf; src.loop = true;
     const lp = actx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 380;
-    lp.Q.value = 0.8;
-    const g = actx.createGain();
-    g.gain.value = 0.04;
-    src.connect(lp).connect(g).connect(actx.destination);
-    src.start();
-    crowdSource = src;
-    crowdGain = g;
+    lp.type = 'lowpass'; lp.frequency.value = 380; lp.Q.value = 0.8;
+    const g = actx.createGain(); g.gain.value = 0.04;
+    src.connect(lp).connect(g).connect(masterGain);
+    src.start(); crowdSource = src; crowdGain = g;
   } catch(e) {}
 }
-function setCrowdVolume(v){ if(crowdGain) crowdGain.gain.setTargetAtTime(clamp(v,0,0.14), actx.currentTime, 0.3); }
+function setCrowdVolume(v){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(clamp(v,0,0.14), actx.currentTime, 0.3); }
 
-function sfxHit(c){const p=200+Math.min(c,20)*10+rand(-8,8);tone(p,.1,'sawtooth',.14);tone(p*1.5,.05,'square',.06)}
-function sfxParry(){tone(880,.06,'sine',.16);tone(1320,.08,'sine',.12,.02);tone(1760,.06,'sine',.08,.05)}
-function sfxDash(){tone(300,.08,'triangle',.08);tone(480,.05,'sine',.05)}
-function sfxBounce(){tone(400+rand(-15,15),.05,'sine',.08);tone(600,.03,'sine',.04)}
-function sfxSpecial(){tone(150,.35,'sawtooth',.1);tone(240,.25,'square',.07,.04);tone(400,.18,'sine',.05,.08)}
-function sfxTailWhip(){tone(110,.25,'sawtooth',.18);tone(220,.18,'square',.13,.04);tone(380,.12,'triangle',.08,.08)}
-function sfxKO(){tone(80,.6,'sawtooth',.22);tone(60,.7,'square',.18,.1);tone(180,.35,'sine',.12,.25)}
-function sfxRound(){tone(523,.08,'square',.08);tone(659,.08,'square',.08,.08);tone(784,.15,'square',.1,.16)}
-function sfxPerfect(){tone(523,.06,'sine',.12);tone(659,.06,'sine',.12,.06);tone(784,.06,'sine',.12,.12);tone(1047,.2,'sine',.14,.18)}
-function sfxCombo(c){const b=420+c*12;tone(b,.1,'square',.1);tone(b*1.25,.1,'square',.08,.05);tone(b*1.5,.15,'square',.1,.1)}
-function sfxComeback(){tone(100,.25,'sawtooth',.16);tone(160,.18,'square',.12,.1)}
-function sfxLaunch(){tone(180,.15,'triangle',.14);tone(350,.12,'sine',.1,.04);tone(550,.08,'sine',.07,.08)}
-function sfxLaunchHit(){tone(80,.3,'sawtooth',.2);tone(120,.25,'square',.15,.05);tone(250,.2,'sine',.1,.1);tone(500,.15,'sine',.08,.15)}
-function sfxFlyUp(){tone(200,.4,'sine',.12);tone(300,.35,'sine',.1,.05);tone(450,.3,'sine',.08,.1)}
-function sfxLand(){tone(60,.35,'sawtooth',.18);tone(90,.25,'square',.14,.05)}
-function sfxFreeze(){tone(1200,.12,'sine',.12);tone(1500,.1,'sine',.1,.04);tone(1900,.08,'sine',.08,.08);tone(2400,.12,'sine',.12,.12);tone(900,.15,'triangle',.1,.2)}
-function sfxSax(){const notes=[330,370,440,392,330];notes.forEach((f,i)=>{tone(f,.12,'sine',.12,i*.1);tone(f*1.5,.08,'sine',.06,i*.1+.05)})}
-function sfxLightning(){tone(80,.6,'sawtooth',.2);tone(60,.8,'square',.18,.05);tone(200,.4,'sine',.1,.1);tone(40,1.2,'sine',.15,.2)}
-function sfxMystery(){const notes=[523,659,784,1047,1319];notes.forEach((f,i)=>tone(f,.1,'sine',.1,i*.08))}
-function sfxRage(){tone(80,.5,'sawtooth',.2);tone(50,.6,'square',.25,.1);tone(160,.3,'sine',.12,.2)}
-function sfxMegaBomb(){tone(40,1.5,'sawtooth',.3);tone(60,1.2,'square',.25,.1);tone(100,.8,'sine',.18,.25);tone(200,.6,'sine',.12,.5)}
+// ─── PREMIUM SFX ───
+function sfxHit(c){
+  const p=200+Math.min(c,20)*12+rand(-8,8);
+  // Tonal body
+  tone(p,.08,'sawtooth',.16);
+  tone(p*1.5,.04,'square',.07,.005);
+  // Noise crack for percussive impact
+  noiseBurst(0.04,0.14+Math.min(c,15)*0.005,1200,6000);
+  // Sub weight
+  subThump(80+c*5,0.08,0.08);
+}
+function sfxParry(){
+  // Bright metallic ring
+  tone(880,.08,'sine',.18);
+  tone(1320,.1,'sine',.14,.015);
+  tone(1760,.08,'sine',.1,.03);
+  tone(2640,.06,'sine',.06,.04);
+  // Shimmer noise
+  noiseBurst(0.06,0.12,3000,12000,.01);
+  sweep(3000,800,0.12,0.06,'sine',.02);
+}
+function sfxDash(){
+  // Whoosh
+  sweep(600,150,0.14,0.1,'sawtooth');
+  noiseBurst(0.08,0.08,200,3000);
+  tone(300,.06,'triangle',.07);
+}
+function sfxBounce(){
+  const f=400+rand(-15,15);
+  tone(f,.06,'sine',.1);
+  tone(f*1.5,.04,'sine',.05,.01);
+  subThump(60,0.06,0.06);
+  noiseBurst(0.03,0.05,500,3000);
+}
+function sfxSpecial(){
+  tone(150,.4,'sawtooth',.12);
+  tone(240,.3,'square',.08,.04);
+  sweep(100,600,0.3,0.08,'sawtooth');
+  subThump(40,0.35,0.12);
+  noiseBurst(0.08,0.1,400,2000,.05);
+}
+function sfxTailWhip(){
+  // Heavy sweep whoosh
+  sweep(500,80,0.25,0.16,'sawtooth');
+  tone(110,.3,'sawtooth',.2);
+  tone(220,.2,'square',.14,.03);
+  noiseBurst(0.1,0.18,300,4000,.02);
+  subThump(50,0.3,0.15);
+}
+function sfxKO(){
+  // Cinematic impact
+  subThump(30,0.8,0.3);
+  subThump(50,0.5,0.2,.1);
+  tone(80,.7,'sawtooth',.24);
+  tone(60,.8,'square',.2,.08);
+  noiseBurst(0.15,0.25,200,6000);
+  noiseBurst(0.25,0.15,100,3000,.08);
+  sweep(400,40,0.6,0.12,'sawtooth',.1);
+  tone(180,.4,'sine',.14,.2);
+}
+function sfxRound(){
+  // Arcade fight bell
+  tone(523,.1,'square',.1);
+  tone(659,.1,'square',.1,.08);
+  tone(784,.18,'square',.12,.16);
+  tone(1047,.12,'sine',.08,.22);
+  noiseBurst(0.04,0.06,2000,8000,.16);
+}
+function sfxPerfect(){
+  // Shimmering victory fanfare
+  [523,659,784,1047].forEach((f,i)=>{
+    tone(f,.08,'sine',.14,i*.06);
+    tone(f*2,.04,'sine',.06,i*.06+.02);
+  });
+  tone(1568,.25,'sine',.16,.28);
+  noiseBurst(0.06,0.08,4000,12000,.24);
+}
+function sfxCombo(c){
+  const b=420+c*14;
+  tone(b,.08,'square',.12);
+  tone(b*1.25,.08,'square',.1,.04);
+  tone(b*1.5,.12,'square',.12,.08);
+  noiseBurst(0.03,0.06+c*0.003,1500,6000,.06);
+  if(c>=7) tone(b*2,.06,'sine',.08,.1);
+}
+function sfxComeback(){
+  subThump(40,0.4,0.18);
+  tone(100,.3,'sawtooth',.18);
+  tone(160,.22,'square',.14,.08);
+  sweep(80,300,0.35,0.1,'sawtooth',.1);
+}
+function sfxLaunch(){
+  // Pillow throw whoosh
+  sweep(200,800,0.15,0.12,'triangle');
+  tone(180,.12,'triangle',.14);
+  tone(350,.1,'sine',.1,.03);
+  noiseBurst(0.05,0.1,400,4000);
+}
+function sfxLaunchHit(){
+  // Massive pillow impact
+  subThump(50,0.35,0.22);
+  tone(80,.35,'sawtooth',.22);
+  tone(120,.28,'square',.16,.04);
+  noiseBurst(0.12,0.22,300,5000);
+  noiseBurst(0.06,0.12,1500,8000,.04);
+  sweep(800,100,0.3,0.1,'sawtooth',.05);
+}
+function sfxFlyUp(){
+  sweep(150,600,0.4,0.1,'sine');
+  tone(200,.35,'sine',.1);
+  tone(350,.25,'sine',.08,.08);
+}
+function sfxLand(){
+  subThump(40,0.3,0.2);
+  tone(60,.3,'sawtooth',.16);
+  noiseBurst(0.1,0.16,200,3000);
+  noiseBurst(0.06,0.1,50,800,.03);
+}
+function sfxFreeze(){
+  // Crystalline ice
+  [1200,1500,1900,2400].forEach((f,i)=>{
+    tone(f,.14,'sine',.12,i*.04);
+    tone(f*0.5,.08,'triangle',.06,i*.04+.02);
+  });
+  sweep(3000,600,0.25,0.08,'sine',.12);
+  noiseBurst(0.08,0.1,3000,12000,.08);
+}
+function sfxSax(){
+  // Jazzy sax riff
+  const notes=[330,370,440,392,330,440];
+  notes.forEach((f,i)=>{
+    tone(f,.14,'sine',.14,i*.09);
+    tone(f*1.5,.08,'sine',.06,i*.09+.04);
+    tone(f*2,.04,'sine',.03,i*.09+.05);
+  });
+  noiseBurst(0.04,0.04,2000,6000,.1);
+}
+function sfxLightning(){
+  subThump(30,1.0,0.25);
+  tone(80,.7,'sawtooth',.22);
+  tone(60,.9,'square',.2,.04);
+  noiseBurst(0.2,0.25,100,8000,.08);
+  noiseBurst(0.3,0.15,50,4000,.15);
+  sweep(600,30,0.8,0.12,'sawtooth',.1);
+}
+function sfxMystery(){
+  const notes=[523,659,784,1047,1319,1568];
+  notes.forEach((f,i)=>{
+    tone(f,.1,'sine',.12,i*.07);
+    tone(f*0.5,.06,'triangle',.05,i*.07);
+  });
+  noiseBurst(0.04,0.06,4000,10000,.35);
+}
+function sfxRage(){
+  subThump(30,0.6,0.25);
+  tone(80,.5,'sawtooth',.22);
+  tone(50,.65,'square',.28,.08);
+  sweep(50,300,0.5,0.14,'sawtooth',.12);
+  noiseBurst(0.15,0.18,100,3000,.1);
+}
+function sfxMegaBomb(){
+  subThump(25,1.8,0.35);
+  subThump(40,1.2,0.25,.15);
+  tone(40,1.6,'sawtooth',.32);
+  tone(60,1.3,'square',.26,.08);
+  noiseBurst(0.3,0.3,100,6000,.05);
+  noiseBurst(0.4,0.2,50,3000,.2);
+  sweep(600,25,1.2,0.15,'sawtooth',.15);
+}
+// New combat SFX
+function sfxShotgun(){
+  // Pumped spread blast
+  subThump(60,0.2,0.2);
+  noiseBurst(0.08,0.2,500,8000);
+  noiseBurst(0.12,0.14,200,4000,.02);
+  sweep(400,1200,0.1,0.12,'sawtooth');
+  tone(250,.1,'sawtooth',.14);
+  for(let i=0;i<5;i++) tone(300+i*60,.06,'triangle',.04,i*.02);
+}
+function sfxUppercut(){
+  // Rising power punch
+  sweep(100,1200,0.2,0.16,'sawtooth');
+  subThump(70,0.15,0.18);
+  noiseBurst(0.06,0.18,600,6000,.02);
+  tone(200,.15,'square',.14);
+  tone(400,.1,'sine',.1,.05);
+  tone(800,.08,'sine',.08,.1);
+}
+function sfxBoomerang(){
+  // Spinning whoosh
+  sweep(300,800,0.15,0.1,'triangle');
+  sweep(800,300,0.15,0.08,'triangle',.15);
+  tone(440,.2,'sine',.08);
+  tone(660,.15,'sine',.06,.05);
+  noiseBurst(0.06,0.08,1000,5000,.03);
+}
+function sfxRapidFire(){
+  // Machine gun pillow burst
+  for(let i=0;i<6;i++){
+    tone(250+i*30,.04,'square',.08+i*0.005,i*.06);
+    noiseBurst(0.025,0.08,800,5000,i*.06);
+  }
+  sweep(200,500,0.35,0.06,'triangle');
+}
 
 // ─── NARRATION AUDIO FILES ───
 let narrFight = null, narrKO = null;
@@ -440,38 +714,271 @@ function spawnSaxWave(owner, face){
   sfxSax();
 }
 
+// ─── NEW PROJECTILE SPAWNERS ───
+function spawnShotgunPillows(owner, face){
+  sfxShotgun();
+  const cx = owner.x + owner.w/2 + face*80;
+  const cy = owner.y + owner.h*0.35;
+  const angles = [-0.35, -0.17, 0, 0.17, 0.35]; // 5-way spread
+  angles.forEach((a,i) => {
+    const spd = 550 + rand(-30,30);
+    projectiles.push({
+      x: cx, y: cy + i*4 - 8,
+      vx: Math.cos(a)*spd*face, vy: Math.sin(a)*spd - 30,
+      w: 36, h: 28,
+      owner, face, alive: true, rot: rand(0,TAU), trail: [],
+      type: 'pillow_mini', isDouble: false,
+    });
+  });
+  feathers(cx, cy, 18, '#ffd740');
+  owner.squash=0.7; owner.stretch=1.4;
+}
+
+function spawnBoomerangPillow(owner, face){
+  sfxBoomerang();
+  const px = owner.x + owner.w/2 + face*80;
+  const py = owner.y + owner.h*0.3;
+  projectiles.push({
+    x: px, y: py, vx: face*600, vy: -60,
+    w: 52, h: 40,
+    owner, face, alive: true, rot: 0, trail: [],
+    type: 'boomerang',
+    _boomPhase: 0, _boomOriginX: px, _boomFace: face,
+  });
+  feathers(px, py, 8, '#a78bfa');
+  owner.squash=0.8; owner.stretch=1.25;
+}
+
+function spawnRapidFirePillows(owner, face){
+  sfxRapidFire();
+  for(let i=0;i<6;i++){
+    setTimeout(()=>{
+      if(!owner.alive) return;
+      const px = owner.x + owner.w/2 + face*70;
+      const py = owner.y + owner.h*0.3 + rand(-25,25);
+      projectiles.push({
+        x: px, y: py,
+        vx: face*(650+rand(-50,50)), vy: rand(-60,30),
+        w: 30, h: 22,
+        owner, face, alive: true, rot: rand(0,TAU), trail: [],
+        type: 'pillow_mini', isDouble: false,
+      });
+      feathers(px, py, 3, '#fff');
+    }, i*55);
+  }
+  owner.squash=1.2; owner.stretch=0.85;
+}
+
+function doPillowUppercut(attacker, victim){
+  sfxUppercut();
+  const adx = Math.abs((attacker.x+attacker.w/2) - (victim.x+victim.w/2));
+  const ady = Math.abs((attacker.y+attacker.h/2) - (victim.y+victim.h/2));
+  if(adx < 220 && ady < 250 && victim.alive && !victim.launched){
+    // Direct sky-launch
+    victim.launched = true;
+    victim.launchVy = -680;
+    victim.launchVx = attacker.face * 80;
+    victim.launchSpin = attacker.face * 8;
+    victim.launchRot = 0;
+    victim.launchTimer = 0;
+    victim.launchIsKO = false;
+    victim.grounded = false;
+    victim.hitFlash = 0.3;
+    victim.hp = Math.max(0, victim.hp - 1);
+    attacker.combo++; attacker.comboT=2; attacker.hits++;
+    if(attacker.combo>attacker.maxCombo) attacker.maxCombo=attacker.combo;
+    hitStop(0.18); addTrauma(0.7);
+    screenFlash('rgba(255,150,0,.4)',0.15);
+    feathers(victim.x+victim.w/2, victim.y, 30, '#fff');
+    sparks(victim.x+victim.w/2, victim.y+victim.h/2, 25, '#ff9100');
+    shockwave(victim.x+victim.w/2, victim.y+victim.h/2, 'rgba(255,150,0,.7)');
+    fText(victim.x+victim.w/2, victim.y-60, 'UPPERCUT!!', '#ff9100', 40, 1.8);
+    slam('PILLOW UPPERCUT!!','#ff9100',1.5);
+    bloomInt=0.7; chromAb=0.5;
+    if(victim.hp <= 0){
+      victim.launchIsKO = true;
+      slowMo(SLO_DUR+0.5, SLO_SCALE);
+      playSpecialVideo(getKOVideo(attacker), 5000);
+      playNarr(narrKO);
+    } else {
+      slowMo(0.4, 0.2);
+    }
+  } else {
+    // Whiffed — still animate
+    fText(attacker.x+attacker.w/2, attacker.y-60, 'UPPERCUT!', '#ff9100', 30, 0.8);
+    sparks(attacker.x+attacker.w/2+attacker.face*100, attacker.y+attacker.h*0.3, 12, '#ff9100');
+  }
+  attacker.squash=0.6; attacker.stretch=1.5;
+  attacker.atkAnim=1.0; attacker.atk=true; attacker.atkT=ATK_TOTAL;
+  attacker._hitChecked=true; // skip normal hit check
+}
+
+const SHOTGUN_WORDS = ['SPREAD!!','BUCKSHOT!!','SCATTER!!','FAN OUT!!','BLAST!!'];
+const UPPERCUT_WORDS = ['UPPERCUT!!','RISING!!','SKY HIGH!!','LAUNCHED!!','GOING UP!!'];
+const BOOMERANG_WORDS = ['BOOMERANG!!','RETURNS!!','CATCH THIS!!','ROUND TRIP!!'];
+const RAPIDFIRE_WORDS = ['RAPID FIRE!!','BARRAGE!!','VOLLEY!!','MINIGUN!!','SUPPRESSION!!'];
+const MINI_PILLOW_WORDS = ['PELTED!!','PLINK!!','FLICK!!','TAP!!','NIP!!'];
+
+// ─── MINI PILLOW HIT (from shotgun/rapidfire) ───
+function miniPillowHit(attacker, victim, dir){
+  if(victim.shieldActive){
+    victim.shieldActive = false;
+    sfxParry();
+    fText(victim.x+victim.w/2, victim.y-60, 'BLOCKED!', '#60a5fa', 28, 0.8);
+    sparks(victim.x+victim.w/2, victim.y+victim.h/2, 10, '#60a5fa');
+    return;
+  }
+  victim.hp = Math.max(0, victim.hp - 1);
+  victim.hitFlash = 0.15;
+  victim.hitRecoil = dir * 0.2;
+  victim.vx = dir * 180;
+  victim.vy = -80;
+  victim.grounded = false;
+  attacker.combo++; attacker.comboT=1.5; attacker.hits++;
+  if(attacker.combo>attacker.maxCombo) attacker.maxCombo=attacker.combo;
+
+  hitStop(0.06); addTrauma(0.25);
+  sfxHit(attacker.combo);
+  feathers(victim.x+victim.w/2, victim.y+victim.h/2, 6, '#fff');
+  sparks(victim.x+victim.w/2, victim.y+victim.h/2, 8, '#ffd740');
+  fText(victim.x+victim.w/2+rand(-20,20), victim.y-30, pick(MINI_PILLOW_WORDS), '#ffd740', 22, 0.7);
+  screenFlash('rgba(255,215,64,.12)',0.05);
+
+  if(victim.hp <= 0){
+    victim.launched = true;
+    victim.launchVy = -420;
+    victim.launchVx = dir * 100;
+    victim.launchSpin = dir * 5;
+    victim.launchRot = 0;
+    victim.launchTimer = 0;
+    victim.launchIsKO = true;
+    victim.grounded = false;
+    slowMo(SLO_DUR+0.3, SLO_SCALE);
+    playSpecialVideo(getKOVideo(attacker), 5000);
+    playNarr(narrKO);
+  }
+  slam(`-1 HP! (${victim.hp}/${MAX_HP})`, '#ffd740', 0.8);
+  if(COMBO_MS[attacker.combo]){
+    setTimeout(()=>{ slam(COMBO_MS[attacker.combo],'#ffd740',1); sfxCombo(attacker.combo); stars(attacker.x+attacker.w/2,attacker.y,10); }, 300);
+  }
+}
+
+// ─── BOOMERANG HIT ───
+function boomerangHit(attacker, victim, dir){
+  if(victim.shieldActive){
+    victim.shieldActive = false;
+    sfxParry();
+    fText(victim.x+victim.w/2, victim.y-60, 'BLOCKED!', '#60a5fa', 30, 1.0);
+    sparks(victim.x+victim.w/2, victim.y+victim.h/2, 15, '#60a5fa');
+    shockwave(victim.x+victim.w/2, victim.y+victim.h/2, 'rgba(96,165,250,0.5)');
+    return;
+  }
+  victim.hp = Math.max(0, victim.hp - 1);
+  victim.hitFlash = 0.2;
+  victim.hitRecoil = dir * 0.3;
+  // Boomerang dizzy effect (shorter than sax)
+  victim.dizzy = true;
+  victim.dizzyT = 1.2;
+  victim.dizzyAngle = 0;
+  victim.vx = dir * 220;
+  victim.vy = -120;
+  victim.grounded = false;
+  attacker.combo++; attacker.comboT=2; attacker.hits++;
+  if(attacker.combo>attacker.maxCombo) attacker.maxCombo=attacker.combo;
+
+  hitStop(0.12); addTrauma(0.5);
+  sfxHit(attacker.combo);
+  feathers(victim.x+victim.w/2, victim.y+victim.h/2, 20, '#c4b5fd');
+  sparks(victim.x+victim.w/2, victim.y+victim.h/2, 18, '#a78bfa');
+  shockwave(victim.x+victim.w/2, victim.y+victim.h/2, 'rgba(167,139,250,.6)');
+  fText(victim.x+victim.w/2, victim.y-50, pick(BOOMERANG_WORDS), '#a78bfa', 34, 1.4);
+  screenFlash('rgba(167,139,250,.2)',0.1);
+  bloomInt=0.5; chromAb=0.3;
+
+  if(victim.hp <= 0){
+    victim.launched = true;
+    victim.launchVy = -500;
+    victim.launchVx = dir * 120;
+    victim.launchSpin = dir * 6;
+    victim.launchRot = 0;
+    victim.launchTimer = 0;
+    victim.launchIsKO = true;
+    victim.grounded = false;
+    slowMo(SLO_DUR+0.5, SLO_SCALE);
+    playSpecialVideo(getKOVideo(attacker), 5000);
+    playNarr(narrKO);
+  } else {
+    slowMo(0.3, 0.25);
+  }
+  slam(`BOOMERANG! -1 HP! (${victim.hp}/${MAX_HP})`, '#a78bfa', 1.2);
+}
+
 function updateAllProjectiles(dt){
   for(let i = projectiles.length-1; i>=0; i--){
     const p = projectiles[i];
     const target = p.owner === p1 ? p2 : p1;
 
+    // ─── BOOMERANG PHYSICS ───
+    if(p.type === 'boomerang'){
+      p._boomPhase += dt;
+      const turnT = 0.35; // start curving back after this
+      if(p._boomPhase > turnT){
+        // Decelerate then reverse
+        const rev = (p._boomPhase - turnT) * 4.5;
+        p.vx = p._boomFace * (600 - rev * 900);
+        p.vy = Math.sin(p._boomPhase * 5) * 120; // wavy path
+      }
+      p.rot += 18 * dt; // fast spin
+    } else {
+      // Normal gravity
+      if(p.type === 'pillow') p.vy += 80*dt;
+      else if(p.type === 'pillow_mini') p.vy += 110*dt;
+      else if(p.type === 'freeze') p.vy += 30*dt;
+      p.rot += p.face * 12 * dt;
+    }
+
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    if(p.type === 'pillow') p.vy += 80*dt;
-    if(p.type === 'freeze') p.vy += 30*dt;
-    p.rot += p.face * 12 * dt;
 
     p.trail.push({x:p.x, y:p.y, life:0.35});
     if(p.trail.length > 18) p.trail.shift();
     for(let t=p.trail.length-1; t>=0; t--){ p.trail[t].life-=dt; if(p.trail[t].life<=0) p.trail.splice(t,1); }
 
+    // Particle trails
     if(p.type === 'pillow' && Math.random()<dt*15) feathers(p.x,p.y,1,'#fff');
+    if(p.type === 'pillow_mini' && Math.random()<dt*10) feathers(p.x,p.y,1,'#ffd740');
+    if(p.type === 'boomerang' && Math.random()<dt*18) em(p.x,p.y,rand(-40,40),rand(-40,40),0.25,'#a78bfa',rand(3,6),'star');
     if(p.type === 'freeze' && Math.random()<dt*12) em(p.x,p.y,rand(-30,30),rand(-30,30),0.3,'#93c5fd',rand(3,7),'star');
     if(p.type === 'sax'   && Math.random()<dt*20) em(p.x+rand(-30,30),p.y+rand(-20,20),rand(-50,50),rand(-80,0),0.5,'#ffd740',rand(5,12),'star');
 
-    // Hit check
-    const hw = p.type==='sax' ? 100 : (p.type==='freeze' ? 70 : 65);
-    const hh = p.type==='sax' ? 100 : (p.type==='freeze' ? 70 : 70);
+    // Hit check — hitboxes per type
+    let hw, hh;
+    if(p.type==='sax'){ hw=100; hh=100; }
+    else if(p.type==='freeze'){ hw=70; hh=70; }
+    else if(p.type==='pillow_mini'){ hw=50; hh=55; }
+    else if(p.type==='boomerang'){ hw=60; hh=55; }
+    else { hw=65; hh=70; } // pillow (normal)
+
     if(p.alive && target.alive && !target.launched &&
        Math.abs(p.x - (target.x+target.w/2)) < hw &&
        Math.abs(p.y - (target.y+target.h/2)) < hh){
       p.alive = false;
       if(p.type === 'pillow') pillowHit(p.owner, target, p.face, p.isDouble);
+      else if(p.type === 'pillow_mini') miniPillowHit(p.owner, target, p.face);
+      else if(p.type === 'boomerang') boomerangHit(p.owner, target, p.face);
       else if(p.type === 'freeze') freezeHit(p.owner, target);
       else if(p.type === 'sax') saxHit(p.owner, target, p.face);
     }
 
-    if(p.x < -100 || p.x > AW+100 || p.y > AH+100){ projectiles.splice(i,1); continue; }
+    // Boomerang returns past owner — despawn
+    if(p.type === 'boomerang' && p._boomPhase > 0.7){
+      const ownerCX = p.owner.x + p.owner.w/2;
+      if((p._boomFace > 0 && p.x < ownerCX - 60) || (p._boomFace < 0 && p.x > ownerCX + 60)){
+        projectiles.splice(i,1); continue;
+      }
+    }
+
+    if(p.x < -150 || p.x > AW+150 || p.y > AH+100){ projectiles.splice(i,1); continue; }
     if(!p.alive){ projectiles.splice(i,1); }
   }
 }
@@ -499,6 +1006,33 @@ function drawProjectiles(){
       ctx.beginPath(); ctx.ellipse(-4,-4,p.w/3,p.h/3,0,0,TAU); ctx.fill();
       ctx.strokeStyle = 'rgba(200,180,150,.4)'; ctx.lineWidth=1.5;
       ctx.beginPath(); ctx.moveTo(-p.w/3,0); ctx.lineTo(p.w/3,0); ctx.stroke();
+    } else if(p.type === 'pillow_mini'){
+      // Small bright pillow pellet
+      ctx.shadowColor = '#ffd740'; ctx.shadowBlur = 12;
+      ctx.fillStyle = '#fffbe6';
+      ctx.beginPath(); ctx.ellipse(0,0,p.w/2,p.h/2,0,0,TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,215,64,.5)';
+      ctx.beginPath(); ctx.ellipse(0,0,p.w/3,p.h/3,0,0,TAU); ctx.fill();
+      // Speed lines
+      ctx.strokeStyle='rgba(255,255,200,.4)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(-p.w/2-6,0); ctx.lineTo(-p.w/2-18,0); ctx.stroke();
+    } else if(p.type === 'boomerang'){
+      // Glowing purple boomerang shape
+      ctx.shadowColor = '#a78bfa'; ctx.shadowBlur = 22;
+      ctx.fillStyle = '#c4b5fd';
+      ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 3;
+      // Boomerang V-shape
+      ctx.beginPath();
+      ctx.moveTo(0, -p.h/2);
+      ctx.quadraticCurveTo(p.w/2, -p.h/4, p.w/3, p.h/4);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(-p.w/3, p.h/4);
+      ctx.quadraticCurveTo(-p.w/2, -p.h/4, 0, -p.h/2);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Inner glow
+      ctx.fillStyle = 'rgba(167,139,250,.5)';
+      ctx.beginPath(); ctx.arc(0,-4,8,0,TAU); ctx.fill();
     } else if(p.type === 'freeze'){
       ctx.shadowColor = '#93c5fd'; ctx.shadowBlur = 25;
       const bg = ctx.createRadialGradient(0,0,5,0,0,26);
@@ -1208,6 +1742,23 @@ function useSpecialPower(c, o, powerName){
       const tcx=c.x+c.w/2,tcy=c.y+c.h/2;
       if(dist(tcx,tcy,o.x+o.w/2,o.y+o.h/2)<TAIL_RANGE)dealMeleeDmg(c,o,c.face,true,true);
     },100);
+  } else if(powerName === 'shotgun'){
+    spawnShotgunPillows(c, c.face);
+    fText(c.x+c.w/2, c.y-60, pick(SHOTGUN_WORDS), '#ffd740', 32, 1.2);
+    slam('PILLOW SHOTGUN!!','#ffd740',1);
+    bloomInt=0.4;
+  } else if(powerName === 'uppercut'){
+    doPillowUppercut(c, o);
+    fText(c.x+c.w/2, c.y-60, pick(UPPERCUT_WORDS), '#ff9100', 32, 1.2);
+  } else if(powerName === 'boomerang'){
+    spawnBoomerangPillow(c, c.face);
+    fText(c.x+c.w/2, c.y-60, pick(BOOMERANG_WORDS), '#a78bfa', 32, 1.2);
+    slam('BOOMERANG!!','#a78bfa',1);
+  } else if(powerName === 'rapidfire'){
+    spawnRapidFirePillows(c, c.face);
+    fText(c.x+c.w/2, c.y-60, pick(RAPIDFIRE_WORDS), '#ff6b35', 32, 1.2);
+    slam('RAPID FIRE!!','#ff6b35',1);
+    bloomInt=0.3;
   }
 }
 
@@ -1439,19 +1990,39 @@ function getAI(ai,tgt){
   const inp={left:0,right:0,up:0,attack:0,dash:0,parry:0,tailwhip:0,launch:0,power1:0,power2:0};
   const dx=tgt.x-ai.x,adx=Math.abs(dx);
 
-  if(adx>200){if(dx>0)inp.right=1;else inp.left=1}
+  // Movement — approach but sometimes back off
+  if(adx>220){if(dx>0)inp.right=1;else inp.left=1}
   else if(adx<80){if(dx>0)inp.left=1;else inp.right=1}
 
-  if(ai.grounded&&Math.random()<0.004)inp.up=1;
-  if(adx<100&&ai.atkCD<=0&&Math.random()<0.08)inp.attack=1;
-  if(tgt.atk&&tgt.atkT>.12&&adx<100&&ai.parryCD<=0&&Math.random()<0.03)inp.parry=1;
-  if(adx<180&&adx>80&&ai.dashCD<=0&&Math.random()<0.008)inp.dash=1;
-  if(ai.launchCD<=0&&adx<280&&Math.random()<0.004)inp.launch=1;
+  if(ai.grounded&&Math.random()<0.003)inp.up=1;
+  if(adx<110&&ai.atkCD<=0&&Math.random()<0.06)inp.attack=1;
+  if(tgt.atk&&tgt.atkT>.12&&adx<100&&ai.parryCD<=0&&Math.random()<0.02)inp.parry=1;
+  if(adx<180&&adx>80&&ai.dashCD<=0&&Math.random()<0.006)inp.dash=1;
+  if(ai.launchCD<=0&&adx<300&&Math.random()<0.003)inp.launch=1;
   if(ai.hp<=2&&adx<120){inp.left=dx>0?1:0;inp.right=dx<0?1:0}
 
-  // Special powers (very rare)
-  if(ai.pow1CD<=0&&Math.random()<0.003){ inp.power1=1; ai.pow1CD=(POWERS[ai.power1]||{cd:8}).cd; }
-  if(ai.pow2CD<=0&&Math.random()<0.002){ inp.power2=1; ai.pow2CD=(POWERS[ai.power2]||{cd:10}).cd; }
+  // Special powers — use them actively
+  const pow1Name = ai.power1;
+  const pow2Name = ai.power2;
+  // Ranged powers used more from distance, melee powers used close
+  const rangedPowers = ['freeze','sax','lightning','shotgun','boomerang','rapidfire'];
+  const meleePowers = ['tornado','tailwhip','uppercut'];
+  if(ai.pow1CD<=0){
+    const isRanged = rangedPowers.includes(pow1Name);
+    const isMelee = meleePowers.includes(pow1Name);
+    const chance = (isRanged && adx > 150 && adx < 400) ? 0.006 :
+                   (isMelee && adx < 180) ? 0.005 :
+                   (pow1Name==='mystery' && !mysteryBox) ? 0.003 : 0.002;
+    if(Math.random()<chance) inp.power1=1;
+  }
+  if(ai.pow2CD<=0&&!inp.power1){
+    const isRanged = rangedPowers.includes(pow2Name);
+    const isMelee = meleePowers.includes(pow2Name);
+    const chance = (isRanged && adx > 150 && adx < 400) ? 0.005 :
+                   (isMelee && adx < 180) ? 0.004 :
+                   (pow2Name==='mystery' && !mysteryBox) ? 0.002 : 0.002;
+    if(Math.random()<chance) inp.power2=1;
+  }
 
   // Mystery box pickup if nearby
   if(mysteryBox&&dist(ai.x+ai.w/2,ai.y+ai.h/2,mysteryBox.x,mysteryBox.y)<150&&Math.random()<0.02){
@@ -1462,8 +2033,10 @@ function getAI(ai,tgt){
 }
 
 // ─── GAME STATE ───
-let state='title',isAI=false,p1,p2,roundTimer,roundNum,cdTimer,lastTS=0,gameTime=0,matchStats={};
+let state='title',isAI=false,isOnline=false,amHost=false,p1,p2,roundTimer,roundNum,cdTimer,lastTS=0,gameTime=0,matchStats={};
 let pendingIsAI = false;
+let remoteInput = {left:false,right:false,up:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false};
+let lastSentInput = '';
 
 function initP(){
   p1=mkCroc(160,1,'Gator Gary','gary');
@@ -1489,7 +2062,9 @@ function resetRound(){
 function startGame(ai){
   isAI=ai;initP();roundNum=1;
   matchStats={p1h:0,p2h:0,p1c:0,p2c:0,p1p:0,p2p:0,rds:0};
-  showTouchControls(!ai); // 2P touch for PvP, single touch for AI
+  // Online: use single-player touch (you control one croc)
+  if(isOnline) showTouchControls(false);
+  else showTouchControls(!ai); // 2P touch for PvP, single touch for AI
   startCD();
 }
 function startCD(){
@@ -1499,6 +2074,7 @@ function startCD(){
   $('title-screen').classList.add('hidden');
   $('result-screen').classList.add('hidden');
   $('loadout-screen').classList.add('hidden');
+  $('online-lobby').classList.add('hidden');
   updatePowerHUD();
   // Play fight narration
   setTimeout(()=>playNarr(narrFight),800);
@@ -1597,7 +2173,7 @@ function updateHUD(){
 }
 
 // ─── INPUT MAPS ───
-function getP1(){
+function getLocalP1(){
   return{
     left:keys.KeyA||ts.left,
     right:keys.KeyD||ts.right,
@@ -1610,8 +2186,7 @@ function getP1(){
     power2:jp.Digit2||ts.power2,
   };
 }
-function getP2(){
-  if(isAI) return getAI(p2,p1);
+function getLocalP2(){
   return{
     left:keys.ArrowLeft||ts2.left,
     right:keys.ArrowRight||ts2.right,
@@ -1623,6 +2198,18 @@ function getP2(){
     power1:jp.Digit7||ts2.power1,
     power2:jp.Digit8||ts2.power2,
   };
+}
+function getP1(){
+  // Online guest controls P1 locally (their croc appears as P1)
+  if(isOnline && !amHost) return getLocalP1();
+  return getLocalP1();
+}
+function getP2(){
+  if(isAI) return getAI(p2,p1);
+  // Online host: P2 is remote opponent
+  if(isOnline && amHost) return remoteInput;
+  // Online guest: they don't run sim, but won't reach here
+  return getLocalP2();
 }
 
 // ─── POST-PROCESSING ───
@@ -1781,21 +2368,247 @@ function renderLoadoutPhase(totalWins){
   }
 }
 
+// ─── ONLINE MULTIPLAYER SYNC ───
+
+function serializeCroc(c){
+  return {
+    x:Math.round(c.x),y:Math.round(c.y),vx:Math.round(c.vx),vy:Math.round(c.vy),
+    face:c.face,hp:c.hp,alive:c.alive,grounded:c.grounded,
+    atk:c.atk,atkT:+(c.atkT.toFixed(2)),atkCD:+(c.atkCD.toFixed(2)),
+    dashing:c.dashing,dashT:+(c.dashT.toFixed(2)),dashDir:c.dashDir,
+    tornadoAct:c.tornadoAct,tailAct:c.tailAct,
+    parrying:c.parrying,parryT:+(c.parryT.toFixed(2)),parryOK:c.parryOK,
+    launched:c.launched,launchRot:+(c.launchRot.toFixed(2)),
+    stunned:c.stunned,stunT:+(c.stunT.toFixed(2)),
+    frozen:c.frozen,frozenT:+(c.frozenT.toFixed(2)),
+    dizzy:c.dizzy,dizzyT:+(c.dizzyT.toFixed(2)),
+    hitFlash:+(c.hitFlash.toFixed(2)),squash:+(c.squash.toFixed(2)),stretch:+(c.stretch.toFixed(2)),
+    combo:c.combo,wins:c.wins,
+    dead:c.dead,deathRot:+(c.deathRot.toFixed(2)),
+    comebackActive:c.comebackActive,
+    rageSuperUsed:c.rageSuperUsed,
+    pow1CD:+(c.pow1CD.toFixed(1)),pow2CD:+(c.pow2CD.toFixed(1)),
+    launchCD:+(c.launchCD.toFixed(1)),
+    atkAnim:+(c.atkAnim.toFixed(2)),
+    walkCycle:+(c.walkCycle.toFixed(2)),bodyLean:+(c.bodyLean.toFixed(2)),
+  };
+}
+function applyCrocState(c, s){
+  if(!c||!s) return;
+  c.x=s.x;c.y=s.y;c.vx=s.vx;c.vy=s.vy;
+  c.face=s.face;c.hp=s.hp;c.alive=s.alive;c.grounded=s.grounded;
+  c.atk=s.atk;c.atkT=s.atkT;c.atkCD=s.atkCD;
+  c.dashing=s.dashing;c.dashT=s.dashT;c.dashDir=s.dashDir;
+  c.tornadoAct=s.tornadoAct;c.tailAct=s.tailAct;
+  c.parrying=s.parrying;c.parryT=s.parryT;c.parryOK=s.parryOK;
+  c.launched=s.launched;c.launchRot=s.launchRot;
+  c.stunned=s.stunned;c.stunT=s.stunT;
+  c.frozen=s.frozen;c.frozenT=s.frozenT;
+  c.dizzy=s.dizzy;c.dizzyT=s.dizzyT;
+  c.hitFlash=s.hitFlash;c.squash=s.squash;c.stretch=s.stretch;
+  c.combo=s.combo;c.wins=s.wins;
+  c.dead=s.dead;c.deathRot=s.deathRot;
+  c.comebackActive=s.comebackActive;
+  c.rageSuperUsed=s.rageSuperUsed;
+  c.pow1CD=s.pow1CD;c.pow2CD=s.pow2CD;
+  c.launchCD=s.launchCD;
+  c.atkAnim=s.atkAnim;
+  c.walkCycle=s.walkCycle;c.bodyLean=s.bodyLean;
+}
+
+function serializeGameState(){
+  return {
+    p1:serializeCroc(p1), p2:serializeCroc(p2),
+    st:state, rt:+(roundTimer.toFixed(2)), rn:roundNum,
+    cd:+(cdTimer.toFixed(2)),
+    // Projectiles — send compact form
+    pj:projectiles.slice(0,20).map(p=>({
+      x:Math.round(p.x),y:Math.round(p.y),vx:Math.round(p.vx),vy:Math.round(p.vy),
+      tp:p.type,ow:p.owner===p1?1:2,act:p.active
+    })),
+  };
+}
+
+function applyGameState(s){
+  if(!s||!p1||!p2) return;
+  applyCrocState(p1, s.p1);
+  applyCrocState(p2, s.p2);
+  state = s.st;
+  roundTimer = s.rt;
+  roundNum = s.rn;
+  cdTimer = s.cd;
+  updateHUD();
+}
+
+// Send local input to host (guest only)
+function sendLocalInputToHost(){
+  if(!isOnline||amHost) return;
+  const inp = getLocalP1();
+  const key = JSON.stringify(inp);
+  if(key !== lastSentInput){
+    lastSentInput = key;
+    if(typeof MP !== 'undefined') MP.sendInput(inp);
+  }
+}
+
+// Host sends game state to guest
+function hostBroadcastState(){
+  if(!isOnline||!amHost) return;
+  if(typeof MP !== 'undefined') MP.sendState(serializeGameState());
+}
+
+// ─── ONLINE LOBBY CONTROLLER ───
+function showOnlineLobby(){
+  const el = document.getElementById('online-lobby');
+  if(!el) return;
+  el.classList.remove('hidden');
+  document.getElementById('title-screen').classList.add('hidden');
+  document.getElementById('lobby-status').textContent = 'Connecting…';
+  document.getElementById('lobby-room-code').style.display = 'none';
+  document.getElementById('lobby-actions').style.display = 'flex';
+  document.getElementById('lobby-waiting').style.display = 'none';
+  document.getElementById('lobby-error').textContent = '';
+  document.getElementById('lobby-create').disabled = true;
+  document.getElementById('lobby-join').disabled = true;
+
+  // Connect
+  if(typeof MP !== 'undefined'){
+    MP.onRoomCreated = (code) => {
+      document.getElementById('lobby-status').textContent = 'Room created! Share code:';
+      document.getElementById('lobby-room-code').textContent = code;
+      document.getElementById('lobby-room-code').style.display = 'block';
+      document.getElementById('lobby-actions').style.display = 'none';
+      document.getElementById('lobby-waiting').style.display = 'block';
+    };
+    MP.onJoinedRoom = (num, code) => {
+      amHost = false;
+      document.getElementById('lobby-status').textContent = 'Joined room ' + code + '!';
+      document.getElementById('lobby-room-code').textContent = code;
+      document.getElementById('lobby-room-code').style.display = 'block';
+      document.getElementById('lobby-actions').style.display = 'none';
+      document.getElementById('lobby-waiting').style.display = 'block';
+      document.getElementById('lobby-waiting').querySelector('div').textContent = 'Connected! Starting game…';
+      setTimeout(() => launchOnlineGame(), 1500);
+    };
+    MP.onOpponentJoined = () => {
+      document.getElementById('lobby-waiting').querySelector('div').textContent = 'Opponent joined! Starting…';
+      setTimeout(() => launchOnlineGame(), 1000);
+    };
+    MP.onOpponentLeft = () => {
+      if(state==='title') return;
+      isOnline=false;
+      state='title';
+      document.getElementById('title-screen').classList.remove('hidden');
+      document.getElementById('hud').classList.add('hidden');
+      document.getElementById('result-screen').classList.add('hidden');
+      document.getElementById('loadout-screen').classList.add('hidden');
+      document.getElementById('online-lobby').classList.add('hidden');
+      hideTouchControls();hideVideo();
+      slam('OPPONENT LEFT','#f87171',2);
+    };
+    MP.onStateUpdate = (s) => {
+      if(isOnline && !amHost) applyGameState(s);
+    };
+    MP.onOpponentInput = (inp) => {
+      if(isOnline && amHost) remoteInput = inp;
+    };
+    MP.onError = (msg) => {
+      document.getElementById('lobby-error').textContent = msg;
+    };
+    MP.onDisconnect = () => {
+      document.getElementById('lobby-status').textContent = 'Disconnected';
+      document.getElementById('lobby-create').disabled = true;
+      document.getElementById('lobby-join').disabled = true;
+    };
+    MP.connect();
+    // Wait a bit for connection
+    setTimeout(()=>{
+      if(MP.isConnected()){
+        document.getElementById('lobby-status').textContent = 'Connected! Create or join a room.';
+        document.getElementById('lobby-create').disabled = false;
+        document.getElementById('lobby-join').disabled = false;
+      } else {
+        document.getElementById('lobby-status').textContent = 'Connecting… please wait';
+        // Retry check
+        setTimeout(()=>{
+          if(MP.isConnected()){
+            document.getElementById('lobby-status').textContent = 'Connected!';
+            document.getElementById('lobby-create').disabled = false;
+            document.getElementById('lobby-join').disabled = false;
+          } else {
+            document.getElementById('lobby-error').textContent = 'Could not connect to server. Is the server running?';
+          }
+        }, 3000);
+      }
+    }, 800);
+  } else {
+    document.getElementById('lobby-error').textContent = 'Multiplayer module not loaded.';
+  }
+}
+
+function hideOnlineLobby(){
+  const el = document.getElementById('online-lobby');
+  if(el) el.classList.add('hidden');
+}
+
+function launchOnlineGame(){
+  hideOnlineLobby();
+  isOnline = true;
+  isAI = false;
+  amHost = MP.isHost();
+  // Use default loadout for online (skip loadout screen for simplicity)
+  loadout.p1 = {power1:'freeze',power2:'shotgun',skin:'default'};
+  loadout.p2 = {power1:'lightning',power2:'tornado',skin:'default'};
+  startGame(false);
+}
+
 // ─── DOM BINDINGS ───
 const $ = id => document.getElementById(id);
 
-$('btn-pvp').addEventListener('click',()=>{ initAudio(); pendingIsAI=false; buildLoadoutScreen(); });
-$('btn-ai').addEventListener('click',()=>{ initAudio(); pendingIsAI=true; buildLoadoutScreen(); });
+$('btn-online').addEventListener('click',()=>{ initAudio(); isOnline=false; showOnlineLobby(); });
+$('btn-pvp').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=false; buildLoadoutScreen(); });
+$('btn-ai').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=true; buildLoadoutScreen(); });
 $('btn-rematch').addEventListener('click',()=>{ roundNum=1; startGame(isAI); });
 $('btn-menu2').addEventListener('click',()=>{
   state='title';
+  if(isOnline && typeof MP!=='undefined') MP.disconnect();
+  isOnline=false;
   $('title-screen').classList.remove('hidden');
   $('result-screen').classList.add('hidden');
   $('hud').classList.add('hidden');
   $('loadout-screen').classList.add('hidden');
+  $('online-lobby').classList.add('hidden');
   hideTouchControls();
   hideVideo();
   updateTitleStreak();
+});
+
+// Lobby button handlers
+$('lobby-create').addEventListener('click',()=>{
+  if(typeof MP!=='undefined'&&MP.isConnected()){
+    amHost=true;
+    MP.createRoom();
+  }
+});
+$('lobby-join').addEventListener('click',()=>{
+  const code=$('lobby-code-input').value.trim().toUpperCase();
+  if(code.length===4&&typeof MP!=='undefined'&&MP.isConnected()){
+    MP.joinRoom(code);
+  } else {
+    $('lobby-error').textContent='Enter a 4-character room code.';
+  }
+});
+$('lobby-code-input').addEventListener('keydown',(e)=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    $('lobby-join').click();
+  }
+});
+$('lobby-back').addEventListener('click',()=>{
+  if(typeof MP!=='undefined') MP.disconnect();
+  isOnline=false;
+  $('online-lobby').classList.add('hidden');
+  $('title-screen').classList.remove('hidden');
 });
 
 // ─── MAIN LOOP ───
@@ -1810,17 +2623,28 @@ function gameLoop(now){
   updateShake(rawDt);updateParts(dt);updateFloats(dt);
   if(mysteryBox)updateMysteryBox(dt);
 
-  if(state==='countdown'){cdTimer-=rawDt;if(cdTimer<=0)startPlay()}
-  if(state==='playing'){
-    updateCroc(p1,getP1(),p2,dt);
-    updateCroc(p2,getP2(),p1,dt);
-    updateAllProjectiles(dt);
-    roundTimer-=dt;
-    if(!p1.alive)endRound(p2);else if(!p2.alive)endRound(p1);
-    else if(roundTimer<=0){if(p1.hp>p2.hp)endRound(p1);else if(p2.hp>p1.hp)endRound(p2);else endRound(null)}
-    updateHUD();
+  // Online guest: only send input and render received state
+  if(isOnline && !amHost){
+    sendLocalInputToHost();
+    // Guest still ticks countdown/render timers for visual smoothness
+    if(state==='countdown'){cdTimer-=rawDt;if(cdTimer<=0) state='playing';}
+    if(p1&&p2) updateHUD();
+  } else {
+    // Host or local: run full simulation
+    if(state==='countdown'){cdTimer-=rawDt;if(cdTimer<=0)startPlay()}
+    if(state==='playing'){
+      updateCroc(p1,getP1(),p2,dt);
+      updateCroc(p2,getP2(),p1,dt);
+      updateAllProjectiles(dt);
+      roundTimer-=dt;
+      if(!p1.alive)endRound(p2);else if(!p2.alive)endRound(p1);
+      else if(roundTimer<=0){if(p1.hp>p2.hp)endRound(p1);else if(p2.hp>p1.hp)endRound(p2);else endRound(null)}
+      updateHUD();
+    }
+    if(state==='roundEnd'){updateCroc(p1,{},p2,dt);updateCroc(p2,{},p1,dt);updateHUD()}
+    // Host broadcasts state to guest
+    if(isOnline && amHost) hostBroadcastState();
   }
-  if(state==='roundEnd'){updateCroc(p1,{},p2,dt);updateCroc(p2,{},p1,dt);updateHUD()}
 
   // RENDER
   ctx.save();ctx.clearRect(0,0,W,H);
@@ -1854,6 +2678,11 @@ loadImages(()=>{
   initVideoOverlay();
   loadNarration();
   updateTitleStreak();
+  // TikTok Mini Games SDK init
+  if(typeof TT !== 'undefined'){
+    TT.init();
+    TT.login(()=>{ TT.startEntranceMission(); TT.addShortcut(); });
+  }
   requestAnimationFrame(gameLoop);
 });
 
