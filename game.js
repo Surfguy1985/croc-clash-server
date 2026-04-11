@@ -1,8 +1,8 @@
 // ============================================================
-//  CROC CLASH — PRODUCTION v5.0
-//  Triple-size crocs, Special Powers, Loadout Screen, Skin
-//  Selection, Rage Mode, Hit Freeze Frames, Win Streaks,
-//  Crowd Ambience, and much more.
+//  CROC CLASH — PRODUCTION v6.0
+//  Real sprite-frame swing animation + 2-player mobile touch
+//  controls. Full frame-based attack with AI-generated swing
+//  poses (wind-up, mid-swing, follow-through).
 // ============================================================
 (() => {
 'use strict';
@@ -16,7 +16,7 @@ const ROUND_TIME = 45, ROUNDS_TO_WIN = 2;
 // ─── FIGHTERS (triple size) ───
 const CW = 280, CH = 400;
 const MOVE_SPD = 220, GRAVITY = 700, JUMP_VEL = -420;
-const ATK_RANGE = 200, ATK_CD = 0.22;
+const ATK_RANGE = 200, ATK_CD = 0.35;
 const DASH_SPD = 580, DASH_DUR = 0.18, DASH_CD = 0.7;
 const TAIL_RANGE = 240, TAIL_CD = 1.4;
 const PARRY_WIN = 0.18, PARRY_CD = 0.55, PARRY_STUN = 0.6;
@@ -83,12 +83,13 @@ const COMBO_MS = {3:"THREE!",5:"FIVE HIT!!",7:"SEVEN!!",10:"TEN HIT COMBO!!",15:
 const WIN_LINES = ["WINS!!","DOMINATES!!","STANDS TALL!!","TAKES IT!!","IS VICTORIOUS!!"];
 const COMEBACK_LINES = ["COMEBACK TIME!!","NOT DONE YET!!","LAST STAND!!","DESPERATION!!","FIGHT BACK!!"];
 
-// ─── localStorage / PROGRESSION ───
+// ─── In-Memory Progression (no localStorage) ───
 const LS_WINS = 'crocClashTotalWins', LS_STREAK = 'crocClashStreak';
-function getTotalWins(){ return parseInt(localStorage.getItem(LS_WINS)||'0'); }
-function getStreak(){ return parseInt(localStorage.getItem(LS_STREAK)||'0'); }
-function addWin(){ const w=getTotalWins()+1; localStorage.setItem(LS_WINS,w); const s=getStreak()+1; localStorage.setItem(LS_STREAK,s); return {wins:w,streak:s}; }
-function resetStreak(){ localStorage.setItem(LS_STREAK,'0'); }
+let _memWins=0, _memStreak=0;
+function getTotalWins(){ return _memWins; }
+function getStreak(){ return _memStreak; }
+function addWin(){ _memWins++; _memStreak++; return {wins:_memWins,streak:_memStreak}; }
+function resetStreak(){ _memStreak=0; }
 
 // ─── IMAGE LOADING ───
 const images = {};
@@ -99,6 +100,14 @@ const IMAGE_LIST = [
   ['carl','carl-sprite-lg.png'],
   ['garyCU','gary-closeup.png'],
   ['carlCU','carl-closeup.png'],
+  // Swing animation frames — Gary
+  ['gary_swing1','gary-swing-1.png'],
+  ['gary_swing2','gary-swing-2.png'],
+  ['gary_swing3','gary-swing-3.png'],
+  // Swing animation frames — Carl
+  ['carl_swing1','carl-swing-1.png'],
+  ['carl_swing2','carl-swing-2.png'],
+  ['carl_swing3','carl-swing-3.png'],
   // Skins — Gary
   ['gary_golden','skins/gary-golden.png'],
   ['gary_zombie','skins/gary-zombie.png'],
@@ -197,6 +206,16 @@ function playNarr(el){ if(!el) return; try{ el.currentTime=0; el.play().catch(()
 
 // ─── VIDEO OVERLAY ───
 let videoPlaying = false, videoEl = null, videoTimeout = null;
+// Alternating KO finishing videos per winner
+const KO_VIDS_GARY = ['video/ko-gary-wins.mp4','video/ko-gary-wins-2.mp4'];
+const KO_VIDS_CARL = ['video/ko-carl-wins.mp4','video/ko-carl-wins-2.mp4'];
+let koVidIdx = 0; // alternates between 0 and 1 each KO
+function getKOVideo(winner){
+  const vids = (winner === p1) ? KO_VIDS_GARY : KO_VIDS_CARL;
+  const vid = vids[koVidIdx % vids.length];
+  koVidIdx++;
+  return vid;
+}
 function initVideoOverlay(){
   videoEl = document.getElementById('special-video');
   if(!videoEl) return;
@@ -235,18 +254,63 @@ const keys = {}, jp = {};
 document.addEventListener('keydown', e => { if(!keys[e.code]) jp[e.code]=true; keys[e.code]=true; e.preventDefault(); });
 document.addEventListener('keyup', e => { keys[e.code]=false; });
 
-// Touch state — extended for powers
+// Touch state — P1 (single-player controls + 2P P1 half)
 const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0};
-document.querySelectorAll('.dpad-btn').forEach(b => {
+// Touch state — P2 (2P P2 half)
+const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0};
+
+// Single-player touch controls (no data-p attribute)
+document.querySelectorAll('#touch-controls .dpad-btn').forEach(b => {
   const d = b.dataset.dir;
   b.addEventListener('touchstart', e => { e.preventDefault(); ts[d]=1; }, {passive:false});
   b.addEventListener('touchend',   e => { e.preventDefault(); ts[d]=0; }, {passive:false});
 });
-document.querySelectorAll('.abtn').forEach(b => {
+document.querySelectorAll('#touch-controls .abtn').forEach(b => {
   const a = b.dataset.action;
   b.addEventListener('touchstart', e => { e.preventDefault(); ts[a]=1; }, {passive:false});
   b.addEventListener('touchend',   e => { e.preventDefault(); ts[a]=0; }, {passive:false});
 });
+
+// 2-Player touch controls (data-p="1" or data-p="2")
+document.querySelectorAll('#touch-2p [data-p="1"].dpad-btn').forEach(b => {
+  const d = b.dataset.dir;
+  b.addEventListener('touchstart', e => { e.preventDefault(); ts[d]=1; }, {passive:false});
+  b.addEventListener('touchend',   e => { e.preventDefault(); ts[d]=0; }, {passive:false});
+});
+document.querySelectorAll('#touch-2p [data-p="1"].abtn').forEach(b => {
+  const a = b.dataset.action;
+  b.addEventListener('touchstart', e => { e.preventDefault(); ts[a]=1; }, {passive:false});
+  b.addEventListener('touchend',   e => { e.preventDefault(); ts[a]=0; }, {passive:false});
+});
+document.querySelectorAll('#touch-2p [data-p="2"].dpad-btn').forEach(b => {
+  const d = b.dataset.dir;
+  b.addEventListener('touchstart', e => { e.preventDefault(); ts2[d]=1; }, {passive:false});
+  b.addEventListener('touchend',   e => { e.preventDefault(); ts2[d]=0; }, {passive:false});
+});
+document.querySelectorAll('#touch-2p [data-p="2"].abtn').forEach(b => {
+  const a = b.dataset.action;
+  b.addEventListener('touchstart', e => { e.preventDefault(); ts2[a]=1; }, {passive:false});
+  b.addEventListener('touchend',   e => { e.preventDefault(); ts2[a]=0; }, {passive:false});
+});
+
+// Show/hide correct touch controls based on mode
+function showTouchControls(is2P){
+  const tc = document.getElementById('touch-controls');
+  const t2p = document.getElementById('touch-2p');
+  const isTouch = window.matchMedia('(pointer:coarse)').matches;
+  if(!isTouch){ tc.style.display='none'; t2p.classList.remove('active'); return; }
+  if(is2P){
+    tc.style.display='none';
+    t2p.classList.add('active');
+  } else {
+    tc.style.display='flex';
+    t2p.classList.remove('active');
+  }
+}
+function hideTouchControls(){
+  document.getElementById('touch-controls').style.display='none';
+  document.getElementById('touch-2p').classList.remove('active');
+}
 
 // ─── MYSTERY BOX ───
 let mysteryBox = null;
@@ -504,7 +568,8 @@ function pillowHit(attacker, victim, dir, isDouble){
   if(victim.hp <= 0){
     victim.launchIsKO = true;
     slowMo(SLO_DUR+0.5, SLO_SCALE);
-    playSpecialVideo('video/special-ko.mp4', 4000);
+    // Play alternating winner-specific KO finishing video
+    playSpecialVideo(getKOVideo(attacker), 5000);
     playNarr(narrKO);
   } else {
     slowMo(0.5, 0.2);
@@ -732,151 +797,205 @@ function drawArena(t){
   ctx.restore();
 }
 
-// ─── DRAW CROC ───
+// ─── FRAME-BASED SWING ANIMATION ───
+// Attack timing (seconds)
+const ATK_ANTIC = 0.12;   // wind-up (frame 1)
+const ATK_SWING = 0.10;   // mid-swing (frame 2)
+const ATK_FOLLOW = 0.18;  // follow-through (frame 3) + settle back
+const ATK_TOTAL = ATK_ANTIC + ATK_SWING + ATK_FOLLOW;
+
+// Get the correct swing frame image for a croc during attack
+function getSwingFrame(c){
+  if(c.atkAnim <= 0) return null; // not attacking → use idle sprite
+  const progress = 1 - c.atkAnim; // 0→1
+  const anticEnd = ATK_ANTIC / ATK_TOTAL;
+  const swingEnd = (ATK_ANTIC + ATK_SWING) / ATK_TOTAL;
+  const key = c.charKey || 'gary';
+  if(progress < anticEnd){
+    return images[key + '_swing1']; // wind-up
+  } else if(progress < swingEnd){
+    return images[key + '_swing2']; // mid-swing
+  } else {
+    return images[key + '_swing3']; // follow-through
+  }
+}
+
+// Easing functions
+function easeOutBack(t){ const c1=1.70158, c3=c1+1; return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2); }
+function easeInCubic(t){ return t*t*t; }
+function easeOutCubic(t){ return 1-Math.pow(1-t,3); }
+function easeOutElastic(t){ const c4=TAU/3; return t===0?0:t===1?1:Math.pow(2,-10*t)*Math.sin((t*10-0.75)*c4)+1; }
+
+// ─── DRAW CROC (Frame-Based Sprite Swap) ───
 function drawCroc(c){
-  const img = getSpriteForCroc(c);
+  // Choose sprite: swing frame during attack, else idle/skin sprite
+  const swingImg = getSwingFrame(c);
+  const idleImg = getSpriteForCroc(c);
+  const img = swingImg || idleImg;
 
   ctx.save();
-  const cx = c.x+c.w/2, cy = c.y+c.h/2;
+  const bobOff = c.grounded ? -c.stepBounce : 0;
+  const cx = c.x+c.w/2, cy = c.y+c.h/2 + bobOff + c.headBob;
   ctx.translate(cx, cy);
 
   if(c.launched) ctx.rotate(c.launchRot);
   if(c.dead) ctx.rotate(c.deathRot);
 
   ctx.scale(c.face, 1);
-  ctx.scale(c.squash, c.stretch);
 
-  // Tornado spin
+  // Breathing
+  const breathAmt = c.frozen ? 0 : Math.sin(c.breathCycle) * 0.018;
+  ctx.scale(c.squash * (1+breathAmt), c.stretch * (1-breathAmt*0.6));
+
+  // Body lean
+  if(!c.launched && !c.dead && c.grounded) ctx.rotate(c.bodyLean);
+  // Hit recoil
+  if(c.hitRecoil !== 0 && !c.launched && !c.dead) ctx.rotate(c.hitRecoil);
+  // Tornado / Dizzy
   if(c.tornadoAct) ctx.rotate((Date.now()/60)%TAU);
-  // Dizzy wobble
-  if(c.dizzy){ ctx.rotate(Math.sin(Date.now()*0.012)*0.15); }
+  if(c.dizzy) ctx.rotate(Math.sin(Date.now()*0.012)*0.15);
 
   if(c.hitFlash>0 && Math.floor(c.hitFlash*30)%2===0) ctx.globalAlpha=.35;
   if(c.stunned&&!c.launched) ctx.globalAlpha=.5+Math.sin(Date.now()*.02)*.2;
 
-  // Rage aura (1 HP)
+  // ─── AURAS (rage, comeback, speed, shield) ───
   const isRage = c.hp<=1 && c.alive && !c.dead && !c.launched;
   if(isRage){
-    ctx.save();
-    const ragePhase = Date.now()*0.006;
-    ctx.globalAlpha = .3+Math.sin(ragePhase)*.15;
+    ctx.save(); ctx.globalAlpha=.3+Math.sin(Date.now()*0.006)*.15;
     const rG=ctx.createRadialGradient(0,0,40,0,0,200);
     rG.addColorStop(0,'rgba(255,30,0,.6)');rG.addColorStop(0.5,'rgba(255,80,0,.3)');rG.addColorStop(1,'transparent');
-    ctx.fillStyle=rG;ctx.fillRect(-200,-200,400,400);
-    ctx.restore();
+    ctx.fillStyle=rG;ctx.fillRect(-200,-200,400,400); ctx.restore();
   }
-
-  // Comeback/low-HP aura
-  if(c.comebackActive && !isRage && !c.dead && !c.launched){
+  if(c.comebackActive&&!isRage&&!c.dead&&!c.launched){
     ctx.save();ctx.globalAlpha=.28+Math.sin(c.comebackFlash)*.1;
     const aG=ctx.createRadialGradient(0,0,40,0,0,180);
     aG.addColorStop(0,'rgba(255,50,0,.4)');aG.addColorStop(1,'transparent');
-    ctx.fillStyle=aG;ctx.fillRect(-180,-180,360,360);
-    ctx.restore();
+    ctx.fillStyle=aG;ctx.fillRect(-180,-180,360,360);ctx.restore();
   }
-
-  // Speed boost aura
   if(c.speedBoost>1&&!c.dead&&!c.launched){
     ctx.save();ctx.globalAlpha=.25+Math.sin(Date.now()*0.01)*.1;
     ctx.strokeStyle='#4ade80';ctx.lineWidth=3;ctx.shadowColor='#4ade80';ctx.shadowBlur=18;
-    ctx.beginPath();ctx.arc(0,0,c.w*.65,0,TAU);ctx.stroke();
-    ctx.shadowBlur=0;ctx.restore();
+    ctx.beginPath();ctx.arc(0,0,c.w*.65,0,TAU);ctx.stroke();ctx.shadowBlur=0;ctx.restore();
   }
-
-  // Shield aura
   if(c.shieldActive&&!c.dead&&!c.launched){
     ctx.save();ctx.globalAlpha=.4+Math.sin(Date.now()*0.008)*.15;
     const sG=ctx.createRadialGradient(0,0,60,0,0,160);
     sG.addColorStop(0,'rgba(96,165,250,.15)');sG.addColorStop(1,'rgba(96,165,250,.4)');
     ctx.fillStyle=sG;ctx.beginPath();ctx.arc(0,0,150,0,TAU);ctx.fill();
     ctx.strokeStyle='#60a5fa';ctx.lineWidth=2.5;ctx.shadowColor='#60a5fa';ctx.shadowBlur=20;
-    ctx.beginPath();ctx.arc(0,0,150,0,TAU);ctx.stroke();
-    ctx.shadowBlur=0;ctx.restore();
+    ctx.beginPath();ctx.arc(0,0,150,0,TAU);ctx.stroke();ctx.shadowBlur=0;ctx.restore();
   }
 
   // Drop shadow
   if(!c.launched){
-    ctx.save();ctx.globalAlpha=.35;
-    ctx.fillStyle='rgba(0,0,0,.6)';
-    ctx.beginPath();ctx.ellipse(0,c.h/2+8,c.w*.4,14,0,0,TAU);ctx.fill();
-    ctx.restore();
+    ctx.save();ctx.globalAlpha=.35;ctx.fillStyle='rgba(0,0,0,.6)';
+    const sw=c.w*.4+(Math.abs(c.vx)>15?Math.sin(c.walkCycle*2)*8:0);
+    ctx.beginPath();ctx.ellipse(0,c.h/2+8-bobOff-c.headBob,sw,14,0,0,TAU);ctx.fill();ctx.restore();
   }
 
-  // The sprite
+  // ─── SPRITE DRAWING — SINGLE FULL-FRAME DRAW ───
   if(img){
     const drawW = c.w*1.12, drawH = c.h*1.08;
-    // Attack swing rotation
-    let swingRot = 0;
-    if(c.atk && c.atkT > 0){
-      swingRot = Math.sin((1-(c.atkT/0.16))*Math.PI)*0.35;
-      ctx.rotate(swingRot);
+
+    // Motion blur ghost trails during mid-swing
+    if(c.atkAnim > 0){
+      const progress = 1 - c.atkAnim;
+      const anticEnd = ATK_ANTIC / ATK_TOTAL;
+      const swingEnd = (ATK_ANTIC + ATK_SWING) / ATK_TOTAL;
+      if(progress >= anticEnd * 0.7 && progress < swingEnd + 0.12){
+        // Draw ghost trails behind current frame
+        const ghostFrames = [images[(c.charKey||'gary')+'_swing1'], images[(c.charKey||'gary')+'_swing2']];
+        for(let g=ghostFrames.length-1; g>=0; g--){
+          const gImg = ghostFrames[g];
+          if(!gImg) continue;
+          const ghostAlpha = (1 - (g+1)/3) * 0.15;
+          ctx.save();
+          ctx.globalAlpha = ghostAlpha;
+          ctx.drawImage(gImg, -drawW/2 - (g+1)*6, -drawH/2, drawW, drawH);
+          ctx.restore();
+        }
+      }
     }
+
+    // Main sprite draw — full frame (no clipping!)
     ctx.drawImage(img, -drawW/2, -drawH/2, drawW, drawH);
 
-    // Pillow swing arc effect
-    if(c.atk&&c.atkT>0){
-      ctx.save();
-      const arcAlpha = clamp(c.atkT/0.16,0,1)*0.6;
-      ctx.globalAlpha = arcAlpha;
-      ctx.strokeStyle='rgba(255,255,255,0.7)';
-      ctx.lineWidth=8;
-      ctx.lineCap='round';
-      ctx.shadowColor='#fff';ctx.shadowBlur=18;
-      ctx.beginPath();
-      ctx.arc(drawW*0.3, 0, drawW*0.5, -0.8, 0.8);
-      ctx.stroke();
-      // Hand flash
-      ctx.fillStyle='rgba(255,255,255,0.5)';
-      ctx.beginPath();
-      ctx.arc(drawW*0.4, drawH*0.1, 18, 0, TAU);
-      ctx.fill();
-      ctx.shadowBlur=0;
-      ctx.restore();
+    // === SWING ARC FX ===
+    if(c.atkAnim > 0){
+      const progress = 1 - c.atkAnim;
+      const anticEnd = ATK_ANTIC / ATK_TOTAL;
+      const swingEnd = (ATK_ANTIC + ATK_SWING) / ATK_TOTAL;
+      if(progress >= anticEnd * 0.5 && progress < swingEnd + 0.1){
+        ctx.save();
+        const intensity = progress < swingEnd
+          ? easeInCubic((progress - anticEnd*0.5) / (swingEnd - anticEnd*0.5))
+          : 1 - (progress-swingEnd)/0.1;
+        ctx.globalAlpha = clamp(intensity * 0.7, 0, 0.7);
+        // Arc swoosh at the pillow area
+        const arcCX = drawW * 0.2 * c.face;
+        const arcCY = -drawH * 0.15;
+        const arcR = drawW * 0.5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = 6 + intensity * 8;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = '#fff'; ctx.shadowBlur = 24;
+        ctx.beginPath();
+        ctx.arc(arcCX, arcCY, arcR, -0.8, 0.6);
+        ctx.stroke();
+        // Impact sparkle
+        if(intensity > 0.5){
+          ctx.globalAlpha = intensity;
+          ctx.fillStyle = '#fff';
+          const tipX = arcCX + Math.cos(0.6) * arcR;
+          const tipY = arcCY + Math.sin(0.6) * arcR;
+          ctx.beginPath(); ctx.arc(tipX, tipY, 6+intensity*14, 0, TAU); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,200,0.7)'; ctx.lineWidth = 2;
+          for(let r=0; r<5; r++){
+            const a = r * TAU/5 + Date.now()*0.01;
+            ctx.beginPath();
+            ctx.moveTo(tipX+Math.cos(a)*10, tipY+Math.sin(a)*10);
+            ctx.lineTo(tipX+Math.cos(a)*(18+intensity*8), tipY+Math.sin(a)*(18+intensity*8));
+            ctx.stroke();
+          }
+        }
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    }
+
+    // Dash trail (uses current sprite)
+    if(c.dashing){
+      ctx.globalAlpha=.12;
+      for(let tr=1;tr<=3;tr++) ctx.drawImage(img,-drawW/2-tr*28*c.face,-drawH/2,drawW,drawH);
+      ctx.globalAlpha=1;
     }
   }
 
-  // Frozen ice cube
+  // ─── OVERLAY FX (frozen, parry, tornado, dizzy, stun, etc.) ───
   if(c.frozen){
     ctx.save();
-    const crackA = clamp(1-(c.frozenT/3),0,1);
-    ctx.globalAlpha = 0.75 - crackA*0.3;
+    const crackA=clamp(1-(c.frozenT/3),0,1);
+    ctx.globalAlpha=0.75-crackA*0.3;
     const iceG=ctx.createLinearGradient(-c.w/2,-c.h/2,c.w/2,c.h/2);
-    iceG.addColorStop(0,'rgba(219,234,254,0.9)');
-    iceG.addColorStop(0.5,'rgba(147,197,253,0.75)');
-    iceG.addColorStop(1,'rgba(96,165,250,0.9)');
-    ctx.fillStyle=iceG;
-    ctx.strokeStyle='rgba(255,255,255,0.7)';
-    ctx.lineWidth=3;
+    iceG.addColorStop(0,'rgba(219,234,254,0.9)');iceG.addColorStop(0.5,'rgba(147,197,253,0.75)');iceG.addColorStop(1,'rgba(96,165,250,0.9)');
+    ctx.fillStyle=iceG;ctx.strokeStyle='rgba(255,255,255,0.7)';ctx.lineWidth=3;
     ctx.shadowColor='#93c5fd';ctx.shadowBlur=20;
-    ctx.beginPath();
-    ctx.roundRect(-c.w/2*1.05,-c.h/2*1.05,c.w*1.1,c.h*1.1,8);
-    ctx.fill();ctx.stroke();
-    // Crack lines
-    if(crackA > 0.4){
-      ctx.globalAlpha = crackA;
-      ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=2;ctx.shadowBlur=0;
-      ctx.beginPath();
-      ctx.moveTo(-c.w*0.3,-c.h*0.4);ctx.lineTo(c.w*0.1,c.h*0.1);ctx.lineTo(-c.w*0.1,c.h*0.4);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(c.w*0.2,-c.h*0.2);ctx.lineTo(-c.w*0.05,c.h*0.2);
-      ctx.stroke();
+    ctx.beginPath();ctx.roundRect(-c.w/2*1.05,-c.h/2*1.05,c.w*1.1,c.h*1.1,8);ctx.fill();ctx.stroke();
+    if(crackA>0.4){
+      ctx.globalAlpha=crackA;ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=2;ctx.shadowBlur=0;
+      ctx.beginPath();ctx.moveTo(-c.w*0.3,-c.h*0.4);ctx.lineTo(c.w*0.1,c.h*0.1);ctx.lineTo(-c.w*0.1,c.h*0.4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(c.w*0.2,-c.h*0.2);ctx.lineTo(-c.w*0.05,c.h*0.2);ctx.stroke();
     }
     ctx.shadowBlur=0;ctx.restore();
   }
-
-  // Parry shield
   if(c.parrying){
     ctx.save();
     const pG=ctx.createRadialGradient(0,0,c.w*.45,0,0,c.w*.75);
     pG.addColorStop(0,'rgba(139,92,246,.1)');pG.addColorStop(1,'rgba(139,92,246,.3)');
     ctx.fillStyle=pG;ctx.beginPath();ctx.arc(0,0,c.w*.75,0,TAU);ctx.fill();
     ctx.strokeStyle='#a78bfa';ctx.lineWidth=2.5;ctx.shadowColor='#a78bfa';ctx.shadowBlur=18;
-    ctx.beginPath();ctx.arc(0,0,c.w*.75,0,TAU);ctx.stroke();
-    ctx.shadowBlur=0;ctx.restore();
+    ctx.beginPath();ctx.arc(0,0,c.w*.75,0,TAU);ctx.stroke();ctx.shadowBlur=0;ctx.restore();
   }
-
-  // Tornado rings
   if(c.tornadoAct){
     ctx.save();ctx.globalAlpha=.5;
     const tt=Date.now()/70;
@@ -887,8 +1006,6 @@ function drawCroc(c){
     }
     ctx.shadowBlur=0;ctx.restore();
   }
-
-  // Tail whip arc
   if(c.tailAct){
     ctx.save();ctx.globalAlpha=.7;
     const tAngle=(Date.now()/30)%TAU;
@@ -898,16 +1015,6 @@ function drawCroc(c){
     ctx.beginPath();ctx.arc(0,c.h*.1,TAIL_RANGE*.55,tAngle,tAngle+2.5);
     ctx.stroke();ctx.shadowBlur=0;ctx.restore();
   }
-
-  // Dash trail
-  if(c.dashing&&img){
-    const drawW=c.w*1.12,drawH=c.h*1.08;
-    ctx.globalAlpha=.12;
-    for(let trail=1;trail<=3;trail++) ctx.drawImage(img,-drawW/2-trail*28*c.face,-drawH/2,drawW,drawH);
-    ctx.globalAlpha=1;
-  }
-
-  // Dizzy stars circling head
   if(c.dizzy&&!c.launched){
     ctx.fillStyle='#ffd740';ctx.shadowColor='#ffd740';ctx.shadowBlur=6;
     for(let i=0;i<5;i++){
@@ -917,8 +1024,6 @@ function drawCroc(c){
     }
     ctx.shadowBlur=0;
   }
-
-  // Stun stars
   if(c.stunned&&!c.launched&&!c.frozen){
     ctx.fillStyle='#ffd740';ctx.shadowColor='#ffd740';ctx.shadowBlur=5;
     for(let i=0;i<4;i++){
@@ -928,18 +1033,13 @@ function drawCroc(c){
     }
     ctx.shadowBlur=0;
   }
-
-  // Double damage indicator
   if(c.doubleDmg&&!c.dead){
     ctx.save();ctx.globalAlpha=0.7+Math.sin(Date.now()*0.01)*0.2;
     ctx.fillStyle='#f472b6';ctx.font='bold 16px Fredoka,sans-serif';
     ctx.textAlign='center';ctx.textBaseline='middle';
     ctx.shadowColor='#f472b6';ctx.shadowBlur=10;
-    ctx.fillText('x2',0,-c.h/2-30);
-    ctx.shadowBlur=0;ctx.restore();
+    ctx.fillText('x2',0,-c.h/2-30);ctx.shadowBlur=0;ctx.restore();
   }
-
-  // Lightning cloud above attacker
   if(c.lightningCloud&&c.lightningCloud>0){
     ctx.save();ctx.globalAlpha=c.lightningCloud*0.85;
     ctx.fillStyle='#374151';ctx.shadowColor='#ffd740';ctx.shadowBlur=15;
@@ -986,6 +1086,19 @@ function mkCroc(x,face,name,charKey){
     rageSuperUsed:false,
     // Lightning cloud anim
     lightningCloud:0,
+    // ─── PROCEDURAL ANIMATION STATE ───
+    animT:0,           // master animation clock
+    walkCycle:0,       // walk cycle phase (radians)
+    breathCycle:0,     // idle breathing phase
+    armAngle:0,        // current arm/pillow swing angle
+    armTarget:0,       // arm target angle (for smooth interp)
+    bodyLean:0,        // forward lean when moving
+    headBob:0,         // vertical bob offset
+    legPhaseL:0,       // left leg phase
+    legPhaseR:Math.PI, // right leg phase (opposite)
+    hitRecoil:0,       // hit recoil rotation
+    stepBounce:0,      // vertical bounce from walking
+    atkAnim:0,         // frame-based attack animation timer (1→0)
   };
 }
 function resetC(c,x){
@@ -1009,6 +1122,10 @@ function resetC(c,x){
   c.shieldActive=false;c.doubleDmg=false;
   c.rageSuperUsed=false;
   c.lightningCloud=0;
+  // Reset animation state
+  c.animT=0;c.walkCycle=0;c.breathCycle=0;c.armAngle=0;c.armTarget=0;
+  c.bodyLean=0;c.headBob=0;c.legPhaseL=0;c.legPhaseR=Math.PI;
+  c.hitRecoil=0;c.stepBounce=0;c.atkAnim=0;
 }
 
 // ─── MELEE DAMAGE ───
@@ -1027,6 +1144,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
     return;
   }
   vic.hitFlash=.14;
+  vic.hitRecoil = dir * 0.35; // Snap hit recoil animation
   const spd = atk.speedBoost>1 ? 1.3 : 1;
   vic.vx=dir*KB*(heavy?1.5:1)*spd;vic.vy=KB_UP*(heavy?1.2:1);vic.grounded=false;
   vic.combo=0;vic.comboT=0;
@@ -1200,14 +1318,22 @@ function updateCroc(c,inp,o,dt){
   if(c.dashing){c.dashT-=dt;c.vx=c.dashDir*DASH_SPD;if(c.dashT<=0)c.dashing=false}
   else if(!c.tornadoAct&&!c.tailAct) c.vx=mx*spd;
 
-  // Attack (melee smack) — with swing animation
+  // Attack (melee smack) — skeletal arm swing animation
   if(inp.attack&&c.atkCD<=0&&!c.atk&&!c.tornadoAct&&!c.parrying&&!c.tailAct){
-    c.atk=true;c.atkT=.16;c.atkCD=ATK_CD/rageAtkMult;sfxHit(c.combo);
-    c.squash=1.2;c.stretch=.85;
-    const acx=c.x+c.w/2+c.face*90,acy=c.y+c.h/2;
-    if(dist(acx,acy,o.x+o.w/2,o.y+o.h/2)<ATK_RANGE&&o.alive&&!o.launched)dealMeleeDmg(c,o,c.face,false,false);
+    c.atk=true;c.atkT=ATK_TOTAL;c.atkAnim=1.0;c.atkCD=ATK_CD/rageAtkMult;sfxHit(c.combo);
+    c.squash=1.15;c.stretch=.88;
+    c._hitChecked=false; // delay hit check to swing phase
   }
-  if(c.atk){c.atkT-=dt;if(c.atkT<=0)c.atk=false}
+  if(c.atk){
+    c.atkT-=dt;c.atkAnim=clamp(c.atkT/ATK_TOTAL,0,1);
+    // Check hit during the swing phase (after anticipation)
+    if(!c._hitChecked && c.atkAnim < 1-(ATK_ANTIC/ATK_TOTAL)){
+      c._hitChecked=true;
+      const acx=c.x+c.w/2+c.face*90,acy=c.y+c.h/2;
+      if(dist(acx,acy,o.x+o.w/2,o.y+o.h/2)<ATK_RANGE&&o.alive&&!o.launched)dealMeleeDmg(c,o,c.face,false,false);
+    }
+    if(c.atkT<=0){c.atk=false;c.atkAnim=0;}
+  }
 
   // PILLOW LAUNCH
   if(inp.launch&&c.launchCD<=0&&!c.tornadoAct&&!c.tailAct&&!c.atk&&!c.parrying&&!c.dashing){
@@ -1260,6 +1386,49 @@ function updateCroc(c,inp,o,dt){
   if(c.y+c.h>FLOOR_Y){c.y=FLOOR_Y-c.h;if(c.vy>130){c.squash=1.3;c.stretch=.7;sfxBounce();shockwave(c.x+c.w/2,FLOOR_Y)}c.vy=0;c.grounded=true}
   c.x=clamp(c.x,10,AW-c.w-10);
   if(!c.dashing&&!c.tornadoAct&&!c.tailAct)c.face=(o.x+o.w/2>c.x+c.w/2)?1:-1;
+
+  // ─── PROCEDURAL ANIMATION TICK ───
+  c.animT += dt;
+  const isMoving = Math.abs(c.vx) > 15;
+  const walkSpeed = Math.abs(c.vx) / 120; // normalized 0-1+
+
+  // Walk cycle — advances when moving
+  if(isMoving && c.grounded){
+    c.walkCycle += dt * 10 * Math.min(walkSpeed, 1.8);
+    c.legPhaseL = c.walkCycle;
+    c.legPhaseR = c.walkCycle + Math.PI;
+    c.stepBounce = Math.abs(Math.sin(c.walkCycle)) * 6 * Math.min(walkSpeed, 1);
+    c.bodyLean = lerp(c.bodyLean, clamp(c.vx * 0.0008, -0.12, 0.12), dt * 8);
+  } else {
+    c.stepBounce = lerp(c.stepBounce, 0, dt * 12);
+    c.bodyLean = lerp(c.bodyLean, 0, dt * 6);
+    c.legPhaseL = lerp(c.legPhaseL, 0, dt * 5);
+    c.legPhaseR = lerp(c.legPhaseR, Math.PI, dt * 5);
+  }
+
+  // Breathing — always ticks (slower when idle, faster in rage)
+  const breathRate = (c.hp <= 1 && c.alive) ? 4.5 : (isMoving ? 3.0 : 1.8);
+  c.breathCycle += dt * breathRate;
+
+  // Arm swing — tracks attack, idle sway, or walking arm pump
+  if(c.atk && c.atkT > 0){
+    c.armTarget = -0.65; // big swing forward
+  } else if(isMoving && c.grounded){
+    c.armTarget = Math.sin(c.walkCycle) * 0.25 * Math.min(walkSpeed, 1);
+  } else {
+    c.armTarget = Math.sin(c.breathCycle * 0.7) * 0.06;
+  }
+  c.armAngle = lerp(c.armAngle, c.armTarget, dt * 18);
+
+  // Head bob — vertical oscillation
+  if(isMoving && c.grounded){
+    c.headBob = Math.sin(c.walkCycle * 2) * 3 * Math.min(walkSpeed, 1);
+  } else {
+    c.headBob = Math.sin(c.breathCycle) * 1.5;
+  }
+
+  // Hit recoil — snaps then decays
+  c.hitRecoil = lerp(c.hitRecoil, 0, dt * 10);
 
   // Crowd ambience scales with combo
   setCrowdVolume(0.04 + clamp(c.combo/20,0,1)*0.1);
@@ -1320,6 +1489,7 @@ function resetRound(){
 function startGame(ai){
   isAI=ai;initP();roundNum=1;
   matchStats={p1h:0,p2h:0,p1c:0,p2c:0,p1p:0,p2p:0,rds:0};
+  showTouchControls(!ai); // 2P touch for PvP, single touch for AI
   startCD();
 }
 function startCD(){
@@ -1351,8 +1521,10 @@ function endMatch(){
   $('res-winner').style.color=wc;
   $('res-score').textContent=`${p1.wins} — ${p2.wins}`;
   $('res-grid').innerHTML=`<div><div class="v">${matchStats.p1h}</div><div class="l">Gary Hits</div></div><div><div class="v">${matchStats.p2h}</div><div class="l">Carl Hits</div></div><div><div class="v">${matchStats.p1c}</div><div class="l">Gary Best Combo</div></div><div><div class="v">${matchStats.p2c}</div><div class="l">Carl Best Combo</div></div><div><div class="v">${matchStats.p1p}</div><div class="l">Gary Parries</div></div><div><div class="v">${matchStats.p2p}</div><div class="l">Carl Parries</div></div>`;
-  $('result-screen').classList.remove('hidden');
-  hideVideo();
+  // Play alternating winner cinematic finishing video
+  playSpecialVideo(getKOVideo(w), 7000);
+  // Show result screen after a short delay so video plays first
+  setTimeout(() => { $('result-screen').classList.remove('hidden'); }, 800);
 
   // Win tracking
   const winner = isAI ? (w===p1?'p1':'ai') : (w===p1?'p1':'p2');
@@ -1370,11 +1542,20 @@ function endMatch(){
 
 // ─── POWER HUD UPDATE ───
 function updatePowerHUD(){
-  // Update touch power button labels
+  // Update touch power button labels — single-player controls
   const p1p1btn = document.getElementById('touch-power1');
   const p1p2btn = document.getElementById('touch-power2');
   if(p1p1btn&&p1){ const def=POWERS[p1.power1]; if(def){ p1p1btn.querySelector('.icon').textContent=def.icon; p1p1btn.querySelector('.plabel').textContent=def.name.split(' ')[0]; } }
   if(p1p2btn&&p1){ const def=POWERS[p1.power2]; if(def){ p1p2btn.querySelector('.icon').textContent=def.icon; p1p2btn.querySelector('.plabel').textContent=def.name.split(' ')[0]; } }
+  // Update 2P touch power button labels
+  const tp1p1 = document.getElementById('tp1-pow1');
+  const tp1p2 = document.getElementById('tp1-pow2');
+  const tp2p1 = document.getElementById('tp2-pow1');
+  const tp2p2 = document.getElementById('tp2-pow2');
+  if(tp1p1&&p1){ const d=POWERS[p1.power1]; if(d){ tp1p1.querySelector('.icon').textContent=d.icon; tp1p1.querySelector('.plabel').textContent=d.name.split(' ')[0]; } }
+  if(tp1p2&&p1){ const d=POWERS[p1.power2]; if(d){ tp1p2.querySelector('.icon').textContent=d.icon; tp1p2.querySelector('.plabel').textContent=d.name.split(' ')[0]; } }
+  if(tp2p1&&p2){ const d=POWERS[p2.power1]; if(d){ tp2p1.querySelector('.icon').textContent=d.icon; tp2p1.querySelector('.plabel').textContent=d.name.split(' ')[0]; } }
+  if(tp2p2&&p2){ const d=POWERS[p2.power2]; if(d){ tp2p2.querySelector('.icon').textContent=d.icon; tp2p2.querySelector('.plabel').textContent=d.name.split(' ')[0]; } }
 }
 
 // ─── HUD ───
@@ -1432,15 +1613,15 @@ function getP1(){
 function getP2(){
   if(isAI) return getAI(p2,p1);
   return{
-    left:keys.ArrowLeft,
-    right:keys.ArrowRight,
-    up:jp.ArrowUp,
-    attack:jp.KeyL,
-    dash:jp.KeyK,
-    parry:jp.KeyP,
-    launch:jp.KeyO,
-    power1:jp.Digit7,
-    power2:jp.Digit8,
+    left:keys.ArrowLeft||ts2.left,
+    right:keys.ArrowRight||ts2.right,
+    up:jp.ArrowUp||ts2.up,
+    attack:jp.KeyL||ts2.attack,
+    dash:jp.KeyK||ts2.dash,
+    parry:jp.KeyP||ts2.parry,
+    launch:jp.KeyO||ts2.launch,
+    power1:jp.Digit7||ts2.power1,
+    power2:jp.Digit8||ts2.power2,
   };
 }
 
@@ -1612,6 +1793,7 @@ $('btn-menu2').addEventListener('click',()=>{
   $('result-screen').classList.add('hidden');
   $('hud').classList.add('hidden');
   $('loadout-screen').classList.add('hidden');
+  hideTouchControls();
   hideVideo();
   updateTitleStreak();
 });
@@ -1623,7 +1805,7 @@ function gameLoop(now){
 
   hsTimer=Math.max(0,hsTimer-rawDt);smTimer=Math.max(0,smTimer-rawDt);
   flashT=Math.max(0,flashT-rawDt);vigT=Math.max(0,vigT-rawDt);
-  const ts2=timeScale(),dt=rawDt*ts2;
+  const tsc=timeScale(),dt=rawDt*tsc;
 
   updateShake(rawDt);updateParts(dt);updateFloats(dt);
   if(mysteryBox)updateMysteryBox(dt);
@@ -1664,6 +1846,7 @@ function gameLoop(now){
   ctx.restore();
   for(const k in jp)delete jp[k];
   ts.attack=0;ts.dash=0;ts.parry=0;ts.launch=0;ts.power1=0;ts.power2=0;
+  ts2.attack=0;ts2.dash=0;ts2.parry=0;ts2.launch=0;ts2.power1=0;ts2.power2=0;
 }
 
 // ─── BOOT ───

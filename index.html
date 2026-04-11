@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
-  <title>CROC CLASH V5.0 — Branson Pillow Brawl</title>
+  <title>CROC CLASH V6.0 — Branson Pillow Brawl</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
@@ -194,36 +194,65 @@
     .lo-hint{font-family:var(--fd);font-size:12px;color:var(--mut);text-align:center;min-height:14px}
     .lo-fight-btn{align-self:center;font-size:17px;padding:15px 48px;margin-top:4px}
 
-    /* ══════ TOUCH CONTROLS ══════ */
+    /* ══════ TOUCH CONTROLS — 2-PLAYER SPLIT SCREEN ══════ */
+    /* P1 controls: left half — single player mode (vs AI) */
     #touch-controls{position:fixed;bottom:0;left:0;right:0;display:none;justify-content:space-between;align-items:flex-end;padding:10px 12px 14px;z-index:20}
-    .tdpad{position:relative;width:140px;height:140px}
+    #touch-controls.mode-2p{display:none !important} /* hidden in 2P mode — we use split controls */
+
+    /* 2-PLAYER SPLIT TOUCH CONTROLS */
+    #touch-2p{position:fixed;bottom:0;left:0;right:0;display:none;z-index:20;pointer-events:none}
+    #touch-2p.active{display:flex}
+    #touch-2p .tp-half{
+      width:50%;display:flex;justify-content:space-between;align-items:flex-end;
+      padding:8px 8px 12px;pointer-events:auto;position:relative;
+    }
+    #touch-2p .tp-half.p1-half{border-right:1px solid rgba(74,222,128,.15)}
+    #touch-2p .tp-half.p2-half{border-left:1px solid rgba(244,114,182,.15)}
+    .tp-label{
+      position:absolute;top:4px;left:50%;transform:translateX(-50%);
+      font-family:var(--fh);font-size:10px;letter-spacing:.15em;
+      opacity:.45;pointer-events:none;
+    }
+    .tp-label.p1l{color:var(--p1)}
+    .tp-label.p2l{color:var(--p2)}
+
+    .tdpad{position:relative;width:120px;height:120px;flex-shrink:0}
     .dpad-ring{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.08);box-shadow:0 0 20px rgba(0,0,0,.4) inset}
-    .dpad-btn{position:absolute;width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:18px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;box-shadow:0 2px 8px rgba(0,0,0,.3),0 1px 0 rgba(255,255,255,.08) inset;transition:all .1s ease}
+    .dpad-btn{position:absolute;width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;box-shadow:0 2px 8px rgba(0,0,0,.3),0 1px 0 rgba(255,255,255,.08) inset;transition:all .1s ease}
     .dpad-btn:active{background:rgba(255,255,255,.18);transform:scale(.92)}
     .dpad-btn.up{top:0;left:50%;transform:translateX(-50%)}
     .dpad-btn.down{bottom:0;left:50%;transform:translateX(-50%)}
     .dpad-btn.left{left:0;top:50%;transform:translateY(-50%)}
     .dpad-btn.right{right:0;top:50%;transform:translateY(-50%)}
-    .abtns{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
-    .arow{display:flex;gap:6px}
+    .abtns{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+    .arow{display:flex;gap:4px}
     .abtn{
-      width:64px;height:58px;border-radius:16px;
-      font-family:var(--fh);font-size:10px;letter-spacing:.05em;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+      width:52px;height:48px;border-radius:14px;
+      font-family:var(--fh);font-size:9px;letter-spacing:.04em;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
       -webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;
       border:none;color:#fff;position:relative;overflow:hidden;
       box-shadow:0 2px 8px rgba(0,0,0,.3),0 1px 0 rgba(255,255,255,.1) inset;
       transition:all .1s ease;
     }
     .abtn:active{transform:scale(.9)}
-    .abtn .icon{font-size:20px;line-height:1}
-    .abtn .plabel{font-size:9px;letter-spacing:.04em;opacity:.85}
+    .abtn .icon{font-size:16px;line-height:1}
+    .abtn .plabel{font-size:8px;letter-spacing:.03em;opacity:.85}
     .abtn.at{background:linear-gradient(135deg,rgba(239,68,68,.4),rgba(220,38,38,.5))}
     .abtn.da{background:linear-gradient(135deg,rgba(74,222,128,.3),rgba(22,163,74,.4))}
     .abtn.pa{background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(109,40,217,.4))}
     .abtn.la{background:linear-gradient(135deg,rgba(255,215,64,.4),rgba(245,158,11,.5));box-shadow:0 2px 12px rgba(255,215,64,.2),0 1px 0 rgba(255,255,255,.15) inset}
     .abtn.pw1{background:linear-gradient(135deg,rgba(147,197,253,.35),rgba(59,130,246,.45));box-shadow:0 2px 10px rgba(147,197,253,.2),0 1px 0 rgba(255,255,255,.12) inset}
     .abtn.pw2{background:linear-gradient(135deg,rgba(244,114,182,.3),rgba(190,24,93,.4))}
+
+    /* AI mode: single-player controls (bigger buttons) */
+    #touch-controls .tdpad{width:140px;height:140px}
+    #touch-controls .dpad-btn{width:48px;height:48px;border-radius:14px;font-size:18px}
+    #touch-controls .abtn{width:64px;height:58px;border-radius:16px;font-size:10px}
+    #touch-controls .abtn .icon{font-size:20px}
+    #touch-controls .abtn .plabel{font-size:9px}
+    #touch-controls .arow{gap:6px}
+    #touch-controls .abtns{gap:6px}
 
     @media(pointer:coarse){#touch-controls{display:flex}}
     @media(max-width:600px){
@@ -233,6 +262,15 @@
       .hstats{font-size:9px}.launch-cd{font-size:9px}
       .combo-hud{font-size:10px}.htimer{font-size:26px}.hround{font-size:10px;letter-spacing:.06em}
       .pow-cd-row{font-size:8px}
+      .tdpad{width:100px;height:100px}
+      .dpad-btn{width:36px;height:36px;border-radius:10px;font-size:14px}
+      .abtn{width:46px;height:42px;border-radius:12px;font-size:8px}
+      .abtn .icon{font-size:14px}
+      .abtn .plabel{font-size:7px}
+      #touch-controls .tdpad{width:120px;height:120px}
+      #touch-controls .dpad-btn{width:42px;height:42px;font-size:16px}
+      #touch-controls .abtn{width:56px;height:50px}
+      #touch-controls .abtn .icon{font-size:18px}
     }
   </style>
 </head>
@@ -261,7 +299,7 @@
         <b>P2:</b> Arrows move · <b>L</b> smack · <b>K</b> dash · <b>P</b> parry · <b>O</b> 🎯 launch · <b>7</b> Power 1 · <b>8</b> Power 2<br/>
         <b>Rage Super:</b> Press both power keys at once when at 1 HP!
       </div>
-      <div class="tver">V5.0 — PRODUCTION</div>
+      <div class="tver">V6.0 — PRODUCTION</div>
     </div>
   </div>
 
@@ -307,9 +345,8 @@
     </div>
   </div>
 
-  <!-- ══════ TOUCH CONTROLS ══════ -->
+  <!-- ══════ TOUCH CONTROLS — SINGLE PLAYER (vs AI) ══════ -->
   <div id="touch-controls">
-    <!-- D-Pad -->
     <div class="tdpad">
       <div class="dpad-ring"></div>
       <div class="dpad-btn up" data-dir="up">▲</div>
@@ -317,44 +354,74 @@
       <div class="dpad-btn left" data-dir="left">◄</div>
       <div class="dpad-btn right" data-dir="right">►</div>
     </div>
-
-    <!-- Action buttons -->
     <div class="abtns">
-      <!-- Row 1: Launch (prominent) -->
       <div class="arow">
-        <div class="abtn la" data-action="launch">
-          <span class="icon">🎯</span>
-          <span class="plabel">LAUNCH</span>
+        <div class="abtn la" data-action="launch"><span class="icon">🎯</span><span class="plabel">LAUNCH</span></div>
+      </div>
+      <div class="arow">
+        <div class="abtn at" data-action="attack"><span class="icon">👊</span><span class="plabel">SMACK</span></div>
+        <div class="abtn pa" data-action="parry"><span class="icon">🛡️</span><span class="plabel">PARRY</span></div>
+      </div>
+      <div class="arow">
+        <div class="abtn da" data-action="dash"><span class="icon">💨</span><span class="plabel">DASH</span></div>
+        <div class="abtn pw1" id="touch-power1" data-action="power1"><span class="icon">❄️</span><span class="plabel">POWER1</span></div>
+      </div>
+      <div class="arow">
+        <div class="abtn pw2" id="touch-power2" data-action="power2"><span class="icon">🎷</span><span class="plabel">POWER2</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ 2-PLAYER SPLIT TOUCH CONTROLS ══════ -->
+  <div id="touch-2p">
+    <!-- P1 (LEFT HALF) -->
+    <div class="tp-half p1-half">
+      <span class="tp-label p1l">P1 GARY</span>
+      <div class="tdpad">
+        <div class="dpad-ring"></div>
+        <div class="dpad-btn up" data-p="1" data-dir="up">▲</div>
+        <div class="dpad-btn down" data-p="1" data-dir="down">▼</div>
+        <div class="dpad-btn left" data-p="1" data-dir="left">◄</div>
+        <div class="dpad-btn right" data-p="1" data-dir="right">►</div>
+      </div>
+      <div class="abtns">
+        <div class="arow">
+          <div class="abtn at" data-p="1" data-action="attack"><span class="icon">👊</span><span class="plabel">SMACK</span></div>
+          <div class="abtn la" data-p="1" data-action="launch"><span class="icon">🎯</span><span class="plabel">LAUNCH</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn da" data-p="1" data-action="dash"><span class="icon">💨</span><span class="plabel">DASH</span></div>
+          <div class="abtn pa" data-p="1" data-action="parry"><span class="icon">🛡️</span><span class="plabel">PARRY</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn pw1" data-p="1" data-action="power1" id="tp1-pow1"><span class="icon">❄️</span><span class="plabel">PWR1</span></div>
+          <div class="abtn pw2" data-p="1" data-action="power2" id="tp1-pow2"><span class="icon">🎷</span><span class="plabel">PWR2</span></div>
         </div>
       </div>
-      <!-- Row 2: Smack + Parry -->
-      <div class="arow">
-        <div class="abtn at" data-action="attack">
-          <span class="icon">👊</span>
-          <span class="plabel">SMACK</span>
+    </div>
+    <!-- P2 (RIGHT HALF) -->
+    <div class="tp-half p2-half">
+      <span class="tp-label p2l">P2 CARL</span>
+      <div class="abtns" style="align-items:flex-start">
+        <div class="arow">
+          <div class="abtn la" data-p="2" data-action="launch"><span class="icon">🎯</span><span class="plabel">LAUNCH</span></div>
+          <div class="abtn at" data-p="2" data-action="attack"><span class="icon">👊</span><span class="plabel">SMACK</span></div>
         </div>
-        <div class="abtn pa" data-action="parry">
-          <span class="icon">🛡️</span>
-          <span class="plabel">PARRY</span>
+        <div class="arow">
+          <div class="abtn pa" data-p="2" data-action="parry"><span class="icon">🛡️</span><span class="plabel">PARRY</span></div>
+          <div class="abtn da" data-p="2" data-action="dash"><span class="icon">💨</span><span class="plabel">DASH</span></div>
         </div>
-      </div>
-      <!-- Row 3: Dash + Power 1 -->
-      <div class="arow">
-        <div class="abtn da" data-action="dash">
-          <span class="icon">💨</span>
-          <span class="plabel">DASH</span>
-        </div>
-        <div class="abtn pw1" id="touch-power1" data-action="power1">
-          <span class="icon">❄️</span>
-          <span class="plabel">POWER1</span>
+        <div class="arow">
+          <div class="abtn pw1" data-p="2" data-action="power1" id="tp2-pow1"><span class="icon">⚡</span><span class="plabel">PWR1</span></div>
+          <div class="abtn pw2" data-p="2" data-action="power2" id="tp2-pow2"><span class="icon">❓</span><span class="plabel">PWR2</span></div>
         </div>
       </div>
-      <!-- Row 4: Power 2 -->
-      <div class="arow">
-        <div class="abtn pw2" id="touch-power2" data-action="power2">
-          <span class="icon">🎷</span>
-          <span class="plabel">POWER2</span>
-        </div>
+      <div class="tdpad">
+        <div class="dpad-ring"></div>
+        <div class="dpad-btn up" data-p="2" data-dir="up">▲</div>
+        <div class="dpad-btn down" data-p="2" data-dir="down">▼</div>
+        <div class="dpad-btn left" data-p="2" data-dir="left">◄</div>
+        <div class="dpad-btn right" data-p="2" data-dir="right">►</div>
       </div>
     </div>
   </div>
