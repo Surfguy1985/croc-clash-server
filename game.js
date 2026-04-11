@@ -480,52 +480,144 @@ function loadNarration(){
 function playNarr(el){ if(!el) return; try{ el.currentTime=0; el.play().catch(()=>{}); }catch(e){} }
 
 // ─── VIDEO OVERLAY ───
+// ─── VIDEO SYSTEM v3 — Preloaded Pool, Rotation, Cooldown, Smooth Fade ───
 let videoPlaying = false, videoLocked = false, videoEl = null, videoTimeout = null;
-// Alternating KO finishing videos per winner
-const KO_VIDS_GARY = ['video/ko-gary-wins.mp4','video/ko-gary-wins-2.mp4'];
-const KO_VIDS_CARL = ['video/ko-carl-wins.mp4','video/ko-carl-wins-2.mp4'];
-let koVidIdx = 0; // alternates between 0 and 1 each KO
-function getKOVideo(winner){
-  const vids = (winner === p1) ? KO_VIDS_GARY : KO_VIDS_CARL;
-  const vid = vids[koVidIdx % vids.length];
-  koVidIdx++;
-  return vid;
+let videoCooldown = 0; // seconds remaining before next non-locked video can play
+const VIDEO_COOLDOWN_SEC = 3.5; // minimum gap between mid-round videos
+
+// All special video sources grouped by action category
+const VID_POOL = {
+  ko_gary:   ['video/ko-gary-wins.mp4','video/ko-gary-wins-2.mp4'],
+  ko_carl:   ['video/ko-carl-wins.mp4','video/ko-carl-wins-2.mp4'],
+  tornado:   ['video/special-tornado.mp4'],
+  tailwhip:  ['video/special-tail-whip.mp4'],
+  parry:     ['video/special-parry.mp4'],
+  pillow:    ['video/special-pillow-launch.mp4','video/special-bounce.mp4'],
+  shotgun:   ['video/special-pillow-launch.mp4'],
+  uppercut:  ['video/special-ko.mp4'],
+  boomerang: ['video/special-bounce.mp4'],
+  rapidfire: ['video/special-pillow-launch.mp4'],
+  freeze:    ['video/special-freeze.mp4'],
+  sax:       ['video/special-saxophone.mp4'],
+  lightning: ['video/special-lightning.mp4'],
+  mystery:   ['video/special-mystery.mp4'],
+  rage:      ['video/special-ko.mp4'],
+  mega:      ['video/special-ko.mp4'],
+  combo:     ['video/special-bounce.mp4','video/special-ko.mp4'],
+};
+// Track last-played index per category for rotation
+const vidLastIdx = {};
+function getRotatedVid(category){
+  const pool = VID_POOL[category];
+  if(!pool || pool.length === 0) return null;
+  if(pool.length === 1) return pool[0];
+  let idx = (vidLastIdx[category] ?? -1) + 1;
+  if(idx >= pool.length) idx = 0;
+  vidLastIdx[category] = idx;
+  return pool[idx];
 }
+
+// Preload all unique video sources into browser cache
+const preloadedVideos = new Set();
+function preloadAllVideos(){
+  const allSrcs = new Set();
+  Object.values(VID_POOL).forEach(arr => arr.forEach(s => allSrcs.add(s)));
+  allSrcs.forEach(src => {
+    if(preloadedVideos.has(src)) return;
+    preloadedVideos.add(src);
+    const v = document.createElement('video');
+    v.preload = 'auto'; v.muted = true; v.playsInline = true;
+    v.src = src; v.load(); // triggers browser to buffer the file
+  });
+}
+
+function getKOVideo(winner){
+  return getRotatedVid(winner === p1 ? 'ko_gary' : 'ko_carl');
+}
+
 function initVideoOverlay(){
   videoEl = document.getElementById('special-video');
   if(!videoEl) return;
-  // Auto-hide when video finishes naturally
+  // Force mute at element level — belt-and-suspenders with HTML attribute
+  videoEl.muted = true;
+  videoEl.volume = 0;
   videoEl.addEventListener('ended', () => hideVideo());
   videoEl.addEventListener('error', () => hideVideo());
-  // Skip on click/touch ONLY if not locked (KO/round-win vids are locked)
   videoEl.addEventListener('click', () => { if(!videoLocked) hideVideo(); });
   videoEl.addEventListener('touchstart', (e) => { if(!videoLocked){ hideVideo(); } else { e.preventDefault(); } }, {passive:false});
+  // Re-mute on any play event (catches autoplay, programmatic play, etc.)
+  videoEl.addEventListener('play', () => { videoEl.muted = true; videoEl.volume = 0; });
+  videoEl.addEventListener('volumechange', () => {
+    if(!videoEl.muted || videoEl.volume > 0){ videoEl.muted = true; videoEl.volume = 0; }
+  });
+  // Preload all videos after short delay (let game assets load first)
+  setTimeout(preloadAllVideos, 2000);
 }
-function playSpecialVideo(src, duration, locked){
-  duration = duration || 3000;
+
+// category: key in VID_POOL; duration in ms; locked = unskippable
+function playSpecialVideo(category, duration, locked){
+  duration = duration || 2000;
   if(!videoEl) return;
-  // If locked video is playing, don't interrupt it; otherwise allow override
+  // If a locked (KO) video is playing, never interrupt
   if(videoPlaying && videoLocked) return;
-  if(videoPlaying) hideVideo();
+  // Non-locked videos respect cooldown to prevent spam
+  if(!locked && videoCooldown > 0) return;
+  // Get rotated video src for this category
+  const src = typeof category === 'string' && category.startsWith('video/') ? category : getRotatedVid(category);
+  if(!src) return;
+  // If same non-locked video is already playing, skip
+  if(videoPlaying && !locked && videoEl.src && videoEl.src.endsWith(src)) return;
+  // Kill any playing video immediately
+  if(videoPlaying) hideVideoImmediate();
   videoLocked = !!locked;
-  videoEl.src = src;
-  videoEl.preload = 'auto';
+  // Set cooldown for non-locked videos
+  if(!locked) videoCooldown = VIDEO_COOLDOWN_SEC;
+  // Always force muted + volume 0 before anything else
+  videoEl.muted = true;
+  videoEl.volume = 0;
+  videoEl.playsInline = true;
+  // Smooth fade-in
+  videoEl.style.opacity = '0';
   videoEl.style.display = 'block';
   videoEl.style.pointerEvents = locked ? 'none' : 'auto';
-  videoEl.muted = true;
-  videoEl.playsInline = true;
+  videoEl.src = src;
+  videoEl.currentTime = 0;
   const playPromise = videoEl.play();
-  if(playPromise) playPromise.catch(() => hideVideo());
+  if(playPromise){
+    playPromise.then(() => {
+      // Re-enforce mute after play starts (some browsers reset it)
+      videoEl.muted = true; videoEl.volume = 0;
+      videoEl.style.opacity = '1';
+    }).catch(() => hideVideoImmediate());
+  } else {
+    videoEl.style.opacity = '1';
+  }
   videoPlaying = true;
   if(videoTimeout) clearTimeout(videoTimeout);
   videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, duration);
 }
+
 function hideVideo(){
   if(!videoEl) return;
+  // Smooth fade-out
+  videoEl.style.opacity = '0';
+  setTimeout(() => {
+    if(videoEl.style.opacity !== '0') return; // another video started
+    hideVideoImmediate();
+  }, 160);
+}
+
+function hideVideoImmediate(){
+  if(!videoEl) return;
+  // Kill audio first, then pause
+  videoEl.muted = true;
+  videoEl.volume = 0;
   videoEl.pause();
   videoEl.style.display = 'none';
+  videoEl.style.opacity = '0';
+  // Clear src fully to release audio resources — use blank data URI to avoid black flash
   videoEl.removeAttribute('src');
-  videoEl.load(); // reset internal state
+  videoEl.load();
   videoPlaying = false;
   videoLocked = false;
   if(videoTimeout){ clearTimeout(videoTimeout); videoTimeout = null; }
@@ -682,7 +774,7 @@ function checkMysteryPickup(c, o){
     const effect = pick(['speed','shield','double','heal']);
     mysteryBox = null;
     sfxMystery();
-    playSpecialVideo('video/special-mystery.mp4', 2000);
+    playSpecialVideo('mystery', 2000);
     applyMysteryEffect(c, o, effect);
   }
 }
@@ -939,7 +1031,7 @@ function boomerangHit(attacker, victim, dir){
     slowMo(0.3, 0.25);
   }
   slam(`BOOMERANG! -1 HP! (${victim.hp}/${MAX_HP})`, '#a78bfa', 1.2);
-  playSpecialVideo('video/special-bounce.mp4', 1800);
+  playSpecialVideo('boomerang', 1800);
 }
 
 function updateAllProjectiles(dt){
@@ -1184,12 +1276,12 @@ function pillowHit(attacker, victim, dir, isDouble){
   }
 
   // Pillow-launch video on every projectile hit
-  playSpecialVideo('video/special-pillow-launch.mp4', 1800);
+  playSpecialVideo('pillow', 1800);
 
   slam(`-${dmg} HP! (${victim.hp}/${MAX_HP})`, isDouble?'#f472b6':'#ff3d00', 1.2);
   if(COMBO_MS[attacker.combo]){
     setTimeout(()=>{ slam(COMBO_MS[attacker.combo],'#ffd740',1); sfxCombo(attacker.combo); stars(attacker.x+attacker.w/2,attacker.y,10);
-      playSpecialVideo('video/special-bounce.mp4', 1800); // combo milestone video
+      playSpecialVideo('combo', 1800);
     }, 400);
   }
 }
@@ -1202,7 +1294,7 @@ function freezeHit(attacker, victim){
   victim.frozenT = 3.0;
   victim.frozenCracks = 0;
   sfxFreeze();
-  playSpecialVideo('video/special-freeze.mp4', 2500);
+  playSpecialVideo('freeze', 2500);
   slam('FROZEN!!', '#93c5fd', 1.5);
   addTrauma(0.5);
   screenFlash('rgba(147,197,253,.35)', 0.2);
@@ -1220,7 +1312,7 @@ function saxHit(attacker, victim, dir){
   victim.dizzyT = 2.0;
   victim.dizzyAngle = 0;
   sfxSax();
-  playSpecialVideo('video/special-saxophone.mp4', 2500);
+  playSpecialVideo('sax', 2500);
   slam('WOOZY!!', '#ffd740', 1.2);
   addTrauma(0.55);
   screenFlash('rgba(255,215,64,.3)', 0.15);
@@ -1230,7 +1322,7 @@ function saxHit(attacker, victim, dir){
 
 // ─── LIGHTNING STRIKE ───
 function doLightningStrike(attacker, victim){
-  playSpecialVideo('video/special-lightning.mp4', 2500);
+  playSpecialVideo('lightning', 2500);
   sfxLightning();
   // Draw clouds
   attacker.lightningCloud = 0.8;
@@ -1756,7 +1848,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
     lightningBolt(vic.x+vic.w/2-50,vic.y-20,vic.x+vic.w/2+50,vic.y+vic.h);
     fText(vic.x+vic.w/2,vic.y-55,pick(PARRY_LINES),'#a78bfa',30);
     vic.parryCount++;chromAb=.4;
-    playSpecialVideo('video/special-parry.mp4', 1800);
+    playSpecialVideo('parry', 1800);
     return;
   }
   // ─── MELEE HP DAMAGE ───
@@ -1777,7 +1869,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
     shockwave(vic.x+vic.w/2,vic.y+vic.h/2,'rgba(255,200,0,.6)');
     screenFlash('rgba(255,200,0,.2)',.12);chromAb=.35;bloomInt=.45;
     fText(vic.x+vic.w/2,vic.y-55,pick(TAIL_WORDS),'#06b6d4',34,1.2);
-    playSpecialVideo('video/special-tail-whip.mp4', 1800);
+    playSpecialVideo('tailwhip', 1800);
   } else if(heavy){
     hitStop(HS_HEAVY);addTrauma(.45);
     feathers(vic.x+vic.w/2,vic.y+vic.h/2,16,'#fff');
@@ -1796,7 +1888,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
   fText(vic.x+vic.w/2, vic.y-40, `-1 HP (${vic.hp}/${MAX_HP})`, '#ff6b6b', 18, 1.2);
   if(COMBO_MS[atk.combo]){
     slam(COMBO_MS[atk.combo],'#ffd740',1);sfxCombo(atk.combo);stars(atk.x+atk.w/2,atk.y,10);bloomInt=.5;
-    playSpecialVideo('video/special-bounce.mp4', 1800); // combo milestone video
+    playSpecialVideo('combo', 1800);
   }
   // KO from melee — launch victim into death spin
   if(vic.hp <= 0){
@@ -1825,7 +1917,7 @@ function useSpecialPower(c, o, powerName){
   } else if(powerName === 'sax'){
     spawnSaxWave(c, c.face);
     fText(c.x+c.w/2, c.y-60, 'SAXOPHONE!', '#ffd740', 30, 1.2);
-    playSpecialVideo('video/special-saxophone.mp4', 2500);
+    playSpecialVideo('sax', 2500);
   } else if(powerName === 'lightning'){
     c.lightningCloud = 0.8;
     doLightningStrike(c, o);
@@ -1837,11 +1929,11 @@ function useSpecialPower(c, o, powerName){
   } else if(powerName === 'tornado'){
     c.tornadoAct=true;c.tornadoT=0.65;c.tornadoCD=POWERS.tornado.cd;
     sfxSpecial();slam('TORNADO!!',c===p1?'#4ade80':'#f472b6',.8);bloomInt=.4;
-    playSpecialVideo('video/special-tornado.mp4', 2000);
+    playSpecialVideo('tornado', 2000);
   } else if(powerName === 'tailwhip'){
     c.tailAct=true;c.tailT=.3;c.tailCD=0;sfxTailWhip();
     c.squash=1.35;c.stretch=.65;
-    playSpecialVideo('video/special-tail-whip.mp4', 2000);
+    playSpecialVideo('tailwhip', 2000);
     setTimeout(()=>{
       if(!c.alive||!o.alive||o.launched)return;
       const tcx=c.x+c.w/2,tcy=c.y+c.h/2;
@@ -1852,22 +1944,22 @@ function useSpecialPower(c, o, powerName){
     fText(c.x+c.w/2, c.y-60, pick(SHOTGUN_WORDS), '#ffd740', 32, 1.2);
     slam('PILLOW SHOTGUN!!','#ffd740',1);
     bloomInt=0.4;
-    playSpecialVideo('video/special-pillow-launch.mp4', 2000);
+    playSpecialVideo('shotgun', 2000);
   } else if(powerName === 'uppercut'){
     doPillowUppercut(c, o);
     fText(c.x+c.w/2, c.y-60, pick(UPPERCUT_WORDS), '#ff9100', 32, 1.2);
-    playSpecialVideo('video/special-ko.mp4', 2000);
+    playSpecialVideo('uppercut', 2000);
   } else if(powerName === 'boomerang'){
     spawnBoomerangPillow(c, c.face);
     fText(c.x+c.w/2, c.y-60, pick(BOOMERANG_WORDS), '#a78bfa', 32, 1.2);
     slam('BOOMERANG!!','#a78bfa',1);
-    playSpecialVideo('video/special-bounce.mp4', 2000);
+    playSpecialVideo('boomerang', 2000);
   } else if(powerName === 'rapidfire'){
     spawnRapidFirePillows(c, c.face);
     fText(c.x+c.w/2, c.y-60, pick(RAPIDFIRE_WORDS), '#ff6b35', 32, 1.2);
     slam('RAPID FIRE!!','#ff6b35',1);
     bloomInt=0.3;
-    playSpecialVideo('video/special-pillow-launch.mp4', 2000);
+    playSpecialVideo('rapidfire', 2000);
   }
 }
 
@@ -2931,6 +3023,7 @@ function gameLoop(now){
   const rawDt=Math.min((now-lastTS)/1000,.1);lastTS=now;gameTime+=rawDt;
 
   hsTimer=Math.max(0,hsTimer-rawDt);smTimer=Math.max(0,smTimer-rawDt);
+  videoCooldown=Math.max(0,videoCooldown-rawDt);
   flashT=Math.max(0,flashT-rawDt);vigT=Math.max(0,vigT-rawDt);
   const tsc=timeScale(),dt=rawDt*tsc;
 
