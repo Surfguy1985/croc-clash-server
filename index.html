@@ -135,6 +135,10 @@
     #special-video::-moz-media-controls,
     #special-video-b::-moz-media-controls{display:none !important;}
     video::-webkit-media-controls-overlay-play-button{display:none !important;}
+    /* Match intro crossfade — longer, smoother dissolve */
+    #special-video.intro-fade, #special-video-b.intro-fade{
+      transition: opacity 1.5s cubic-bezier(.4,0,.2,1) !important;
+    }
     /* vidIn removed — using CSS opacity transition instead */
 
     /* ══════ RESULT ══════ */

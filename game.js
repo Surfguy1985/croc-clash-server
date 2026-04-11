@@ -698,6 +698,7 @@ const VID_POOL = {
   rage:      ['video/special-ko.mp4'],
   mega:      ['video/special-ko.mp4'],
   combo:     ['video/special-bounce.mp4','video/special-ko.mp4'],
+  match_intro: ['video/match-intro.mp4'],
 };
 // Track last-played index per category for rotation
 const vidLastIdx = {};
@@ -732,8 +733,8 @@ function getKOVideo(winner){
 function initVideoEl(el){
   if(!el) return;
   el.muted = true; el.volume = 0;
-  el.addEventListener('ended', () => hideVideo());
-  el.addEventListener('error', () => hideVideo());
+  el.addEventListener('ended', () => { if(!matchIntroPlaying) hideVideo(); });
+  el.addEventListener('error', () => { if(!matchIntroPlaying) hideVideo(); });
   el.addEventListener('click', () => { if(!videoLocked) hideVideo(); });
   el.addEventListener('touchstart', (e) => { if(!videoLocked){ hideVideo(); } else { e.preventDefault(); } }, {passive:false});
   el.addEventListener('play', () => { el.muted = true; el.volume = 0; });
@@ -795,9 +796,11 @@ function playSpecialVideo(category, duration, locked){
 
 function hideVideo(){
   if(!videoEl) return;
+  if(matchIntroPlaying) return; // Don't interrupt match intro
   videoEl.style.opacity = '0';
   if(videoElB) videoElB.style.opacity = '0';
   setTimeout(() => {
+    if(matchIntroPlaying) return;
     if(videoEl.style.opacity !== '0') return;
     hideVideoImmediate();
   }, 180);
@@ -2995,7 +2998,7 @@ function resetRound(){
   parts.length=0;floats.length=0;projectiles.length=0;
   mysteryBox=null;
   trauma=0;hsTimer=0;smTimer=0;slamTm=0;flashT=0;vigT=0;chromAb=0;bloomInt=0;
-  hideVideo();
+  if(!matchIntroPlaying) hideVideo();
 }
 function startGame(ai){
   isAI=ai;initP();roundNum=1;
@@ -3006,7 +3009,82 @@ function startGame(ai){
   // Online: use single-player touch (you control one croc)
   if(isOnline) showTouchControls(false);
   else showTouchControls(!ai); // 2P touch for PvP, single touch for AI
-  startCD();
+  playMatchIntro(() => startCD());
+}
+
+// ─── MATCH INTRO VIDEO WITH CROSSFADE TO GAMEPLAY ───
+let matchIntroPlaying = false;
+let matchIntroTimer = null;
+let matchIntroCleanup = null;
+function playMatchIntro(onDone){
+  const src = 'video/match-intro.mp4';
+  if(!videoEl || !videoElB){ onDone(); return; }
+  matchIntroPlaying = true;
+  // Clear any previous timers
+  if(matchIntroTimer) clearTimeout(matchIntroTimer);
+  if(matchIntroCleanup) clearTimeout(matchIntroCleanup);
+  // Synchronously kill any pending hideVideo timeout so it can't fire later
+  if(videoTimeout){ clearTimeout(videoTimeout); videoTimeout = null; }
+  // Stop both video elements immediately (clean slate)
+  [videoEl, videoElB].forEach(v => { v.pause(); v.style.display='none'; v.style.opacity='0'; v.removeAttribute('src'); v.load(); });
+  videoPlaying = false; videoLocked = false;
+  // Hide all screens, show HUD behind video so it's ready
+  $('title-screen').classList.add('hidden');
+  $('loadout-screen').classList.add('hidden');
+  $('result-screen').classList.add('hidden');
+  $('online-lobby').classList.add('hidden');
+  // Prepare the game canvas behind the video (draw arena first frame)
+  resetRound(); state = 'intro';
+  $('hud').classList.remove('hidden');
+  // Use the incoming video slot for the intro
+  const incoming = (activeVidSlot === 'A') ? videoElB : videoEl;
+  const outgoing = (activeVidSlot === 'A') ? videoEl : videoElB;
+  // Kill any outgoing video
+  outgoing.pause(); outgoing.style.display = 'none';
+  videoLocked = true; videoPlaying = true;
+  incoming.muted = true; incoming.volume = 0; incoming.playsInline = true;
+  incoming.classList.remove('intro-fade');
+  incoming.style.display = 'block';
+  incoming.style.opacity = '1';
+  incoming.style.pointerEvents = 'none';
+  incoming.src = src;
+  incoming.currentTime = 0;
+  const pp = incoming.play();
+  if(pp) pp.catch(() => { matchIntroPlaying=false; onDone(); });
+  activeVidSlot = (activeVidSlot === 'A') ? 'B' : 'A';
+  // Cross-dissolve: start fading at ~8s so the arena bleeds through
+  const fadeStart = 7800;
+  const totalDur  = 9800; // cleanup after fade complete
+  if(videoTimeout) clearTimeout(videoTimeout);
+  matchIntroTimer = setTimeout(() => {
+    incoming.classList.add('intro-fade'); // switch to slow 1.5s transition
+    // Force reflow so the transition class takes effect
+    void incoming.offsetWidth;
+    incoming.style.opacity = '0'; // triggers the 1.5s CSS dissolve
+  }, fadeStart);
+  // Also hide on natural video end (if shorter than expected)
+  const onEnd = () => {
+    incoming.removeEventListener('ended', onEnd);
+    if(matchIntroPlaying){
+      incoming.classList.add('intro-fade');
+      void incoming.offsetWidth;
+      incoming.style.opacity = '0';
+    }
+  };
+  incoming.addEventListener('ended', onEnd);
+  // After crossfade completes, clean up and start gameplay
+  matchIntroCleanup = setTimeout(() => {
+    incoming.pause();
+    incoming.classList.remove('intro-fade');
+    incoming.style.display = 'none';
+    incoming.style.opacity = '0';
+    incoming.removeAttribute('src');
+    incoming.load();
+    videoPlaying = false; videoLocked = false;
+    matchIntroPlaying = false;
+    matchIntroTimer = null; matchIntroCleanup = null;
+    onDone();
+  }, totalDur);
 }
 function startCD(){
   resetRound();state='countdown';cdTimer=2.2;
