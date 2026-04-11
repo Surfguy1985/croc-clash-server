@@ -1023,7 +1023,7 @@ function checkMysteryPickup(c, o){
     const effect = pick(['speed','shield','double','heal']);
     mysteryBox = null;
     sfxMystery();
-    playSpecialVideo('mystery', 2000);
+    /* playSpecialVideo('mystery', 2000); */
     applyMysteryEffect(c, o, effect);
   }
 }
@@ -1281,7 +1281,7 @@ function boomerangHit(attacker, victim, dir){
     slowMo(0.3, 0.25);
   }
   slam(`BOOMERANG! -1 HP! (${victim.hp}/${MAX_HP})`, '#a78bfa', 1.2);
-  playSpecialVideo('boomerang', 1800);
+  /* playSpecialVideo('boomerang', 1800); */
 }
 
 function updateAllProjectiles(dt){
@@ -1526,12 +1526,12 @@ function pillowHit(attacker, victim, dir, isDouble){
   }
 
   // Pillow-launch video on every projectile hit
-  playSpecialVideo('pillow', 1800);
+  /* playSpecialVideo('pillow', 1800); */
 
   slam(`-${dmg} HP! (${victim.hp}/${MAX_HP})`, isDouble?'#f472b6':'#ff3d00', 1.2);
   if(COMBO_MS[attacker.combo]){
     setTimeout(()=>{ slam(COMBO_MS[attacker.combo],'#ffd740',1); sfxCombo(attacker.combo); stars(attacker.x+attacker.w/2,attacker.y,10);
-      playSpecialVideo('combo', 1800);
+      /* playSpecialVideo('combo', 1800); */
     }, 400);
   }
 }
@@ -1544,7 +1544,7 @@ function freezeHit(attacker, victim){
   victim.frozenT = 3.0;
   victim.frozenCracks = 0;
   sfxFreeze();
-  playSpecialVideo('freeze', 2500);
+  /* playSpecialVideo('freeze', 2500); */
   slam('FROZEN!!', '#93c5fd', 1.5);
   addTrauma(0.5);
   screenFlash('rgba(147,197,253,.35)', 0.2);
@@ -1562,7 +1562,7 @@ function saxHit(attacker, victim, dir){
   victim.dizzyT = 2.0;
   victim.dizzyAngle = 0;
   sfxSax();
-  playSpecialVideo('sax', 2500);
+  /* playSpecialVideo('sax', 2500); */
   slam('WOOZY!!', '#ffd740', 1.2);
   addTrauma(0.55);
   screenFlash('rgba(255,215,64,.3)', 0.15);
@@ -1572,7 +1572,7 @@ function saxHit(attacker, victim, dir){
 
 // ─── LIGHTNING STRIKE ───
 function doLightningStrike(attacker, victim){
-  playSpecialVideo('lightning', 2500);
+  /* playSpecialVideo('lightning', 2500); */
   sfxLightning();
   // Draw clouds
   attacker.lightningCloud = 0.8;
@@ -2483,7 +2483,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
     fText(vic.x+vic.w/2,vic.y-55,pick(PARRY_LINES),'#a78bfa',30);
     vic.parryCount++;chromAb=.4;
     if(vic===p1) _dailyParryCount++;
-    playSpecialVideo('parry', 1800);
+    /* playSpecialVideo('parry', 1800); */
     return;
   }
   // ─── MELEE HP DAMAGE ───
@@ -2506,7 +2506,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
     shockwave(vic.x+vic.w/2,vic.y+vic.h/2,'rgba(255,200,0,.6)');
     screenFlash('rgba(255,200,0,.2)',.12);chromAb=.35;bloomInt=.45;
     fText(vic.x+vic.w/2,vic.y-55,pick(TAIL_WORDS),'#06b6d4',34,1.2);
-    playSpecialVideo('tailwhip', 1800);
+    /* playSpecialVideo('tailwhip', 1800); */
   } else if(heavy){
     hitStop(HS_HEAVY);addTrauma(.45);
     feathers(vic.x+vic.w/2,vic.y+vic.h/2,16,'#fff');
@@ -2525,7 +2525,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
   fText(vic.x+vic.w/2, vic.y-40, `-1 HP (${vic.hp}/${MAX_HP})`, '#ff6b6b', 18, 1.2);
   if(COMBO_MS[atk.combo]){
     slam(COMBO_MS[atk.combo],'#ffd740',1);sfxCombo(atk.combo);stars(atk.x+atk.w/2,atk.y,10);bloomInt=.5;
-    playSpecialVideo('combo', 1800);
+    /* playSpecialVideo('combo', 1800); */
   }
   // KO from melee — launch victim into death spin
   if(vic.hp <= 0){
@@ -2554,7 +2554,7 @@ function useSpecialPower(c, o, powerName){
   } else if(powerName === 'sax'){
     spawnSaxWave(c, c.face);
     fText(c.x+c.w/2, c.y-60, 'SAXOPHONE!', '#ffd740', 30, 1.2);
-    playSpecialVideo('sax', 2500);
+    /* playSpecialVideo('sax', 2500); */
   } else if(powerName === 'lightning'){
     c.lightningCloud = 0.8;
     doLightningStrike(c, o);
@@ -2566,11 +2566,11 @@ function useSpecialPower(c, o, powerName){
   } else if(powerName === 'tornado'){
     c.tornadoAct=true;c.tornadoT=0.65;c.tornadoCD=POWERS.tornado.cd;
     sfxSpecial();slam('TORNADO!!',c===p1?'#4ade80':'#f472b6',.8);bloomInt=.4;
-    playSpecialVideo('tornado', 2000);
+    /* playSpecialVideo('tornado', 2000); */
   } else if(powerName === 'tailwhip'){
     c.tailAct=true;c.tailT=.3;c.tailCD=0;sfxTailWhip();
     c.squash=1.35;c.stretch=.65;
-    playSpecialVideo('tailwhip', 2000);
+    /* playSpecialVideo('tailwhip', 2000); */
     setTimeout(()=>{
       if(!c.alive||!o.alive||o.launched)return;
       const tcx=c.x+c.w/2,tcy=c.y+c.h/2;
@@ -2581,22 +2581,22 @@ function useSpecialPower(c, o, powerName){
     fText(c.x+c.w/2, c.y-60, pick(SHOTGUN_WORDS), '#ffd740', 32, 1.2);
     slam('PILLOW SHOTGUN!!','#ffd740',1);
     bloomInt=0.4;
-    playSpecialVideo('shotgun', 2000);
+    /* playSpecialVideo('shotgun', 2000); */
   } else if(powerName === 'uppercut'){
     doPillowUppercut(c, o);
     fText(c.x+c.w/2, c.y-60, pick(UPPERCUT_WORDS), '#ff9100', 32, 1.2);
-    playSpecialVideo('uppercut', 2000);
+    /* playSpecialVideo('uppercut', 2000); */
   } else if(powerName === 'boomerang'){
     spawnBoomerangPillow(c, c.face);
     fText(c.x+c.w/2, c.y-60, pick(BOOMERANG_WORDS), '#a78bfa', 32, 1.2);
     slam('BOOMERANG!!','#a78bfa',1);
-    playSpecialVideo('boomerang', 2000);
+    /* playSpecialVideo('boomerang', 2000); */
   } else if(powerName === 'rapidfire'){
     spawnRapidFirePillows(c, c.face);
     fText(c.x+c.w/2, c.y-60, pick(RAPIDFIRE_WORDS), '#ff6b35', 32, 1.2);
     slam('RAPID FIRE!!','#ff6b35',1);
     bloomInt=0.3;
-    playSpecialVideo('rapidfire', 2000);
+    /* playSpecialVideo('rapidfire', 2000); */
   }
 }
 
@@ -2609,7 +2609,7 @@ function megaPillowBomb(attacker, victim){
   screenFlash('rgba(255,100,255,0.6)',0.3);
   slam('MEGA PILLOW BOMB!!','#f472b6',2);
   bloomInt=1;chromAb=0.8;
-  playSpecialVideo('video/special-ko.mp4', 2500);
+  /* playSpecialVideo('video/special-ko.mp4', 2500); */
   // Giant explosion
   feathers(attacker.x+attacker.w/2,attacker.y+attacker.h/2,100,'#fff');
   sparks(attacker.x+attacker.w/2,attacker.y+attacker.h/2,50,'#f472b6');
@@ -2678,7 +2678,7 @@ function updateCroc(c,inp,o,dt){
     addTrauma(0.6);
     screenFlash('rgba(255,0,0,0.3)',0.2);
     vignette('rgba(255,0,0,.4)',0.8);
-    playSpecialVideo('video/special-ko.mp4', 2000);
+    /* playSpecialVideo('video/special-ko.mp4', 2000); */
   }
 
   const rageSpeedMult = (c.hp<=1&&c.alive) ? 1.2 : 1;
@@ -2736,7 +2736,7 @@ function updateCroc(c,inp,o,dt){
       c.vx = 0; // lock horizontal during dive
       sfxSpecial();
       fText(c.x+c.w/2, c.y-40, 'POWER DIVE!!', '#ff6b35', 34, 1.5);
-      playSpecialVideo('tornado', 1500);
+      /* playSpecialVideo('tornado', 1500); */
     }
     c.diveDownTimer = 0.35; // 350ms window for double-tap
   }
@@ -3158,13 +3158,16 @@ function endRound(w){
   matchStats.p1p+=p1.parryCount;matchStats.p2p+=p2.parryCount;
   if(w){w.wins++;if(w.hp>=MAX_HP){slam(pick(PERFECT_LINES),'#ffd740',2);sfxPerfect();goldenRain(AW/2,AH*.25);bloomInt=1}else slam(pick(KO_LINES),'#ff3d00',1.8)}
   else slam("TIME'S UP!!",'#fbbf24',1.5);
-  // Play winner KO video after EVERY round (locked = unskippable, auto-hides after 1 play)
-  if(w){
-    hideVideo(); // clear any in-flight combat KO video
+  const isMatchWin = w && (w.wins >= ROUNDS_TO_WIN);
+  // Play KO video at end of round — but skip if this is the final match-winning round
+  // (the boss KO video in endMatch() handles that instead)
+  if(w && !isMatchWin){
+    hideVideo();
     playSpecialVideo(getKOVideo(w), 6000, true);
   }
-  // Wait for video to finish before advancing (7.5s gives 6s video + buffer)
-  setTimeout(()=>{hideVideo();if(p1.wins>=ROUNDS_TO_WIN||p2.wins>=ROUNDS_TO_WIN)endMatch();else{roundNum++;startCD()}},7500);
+  // Advance after video (or immediately if match-winning round)
+  const advanceDelay = (w && !isMatchWin) ? 7500 : 2500;
+  setTimeout(()=>{ hideVideo(); if(isMatchWin) endMatch(); else { roundNum++; startCD(); } }, advanceDelay);
 }
 function endMatch(){
   state='result';
