@@ -1,125 +1,170 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
   <title>CROC CLASH — Branson Pillow Brawl</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
     :root{
-      --font-display:'Fredoka',sans-serif;
-      --font-body:'Space Grotesk',sans-serif;
-      --color-bg:#0e0e1a;
-      --color-p1:#4ade80;--color-p1-dark:#166534;
-      --color-p2:#f472b6;--color-p2-dark:#9d174d;
-      --color-accent:#fbbf24;--color-gold:#ffd740;
-      --color-text:#f0f0f5;--color-muted:#7a7a95;
-      --color-surface:rgba(255,255,255,0.07);
-      --color-border:rgba(255,255,255,0.1);
+      --fd:'Fredoka',sans-serif;
+      --fb:'Space Grotesk',sans-serif;
+      --fh:'Bebas Neue',sans-serif;
+      --p1:#4ade80;--p1d:#166534;--p1g:rgba(74,222,128,.35);
+      --p2:#f472b6;--p2d:#9d174d;--p2g:rgba(244,114,182,.35);
+      --acc:#fbbf24;--gold:#ffd740;
+      --txt:#f0f0f5;--mut:#7a7a95;
+      --bg:#0a0a14;
     }
-    html,body{width:100%;height:100%;overflow:hidden;background:var(--color-bg);font-family:var(--font-body);color:var(--color-text)}
+    html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:var(--fb);color:var(--txt)}
     canvas{display:block;position:fixed;inset:0;z-index:0}
 
-    /* Shared button */
-    .btn{
-      font-family:var(--font-display);font-size:15px;font-weight:600;
-      padding:14px 32px;border:2px solid var(--color-border);border-radius:14px;
-      background:var(--color-surface);color:var(--color-text);cursor:pointer;
-      transition:all .2s ease;letter-spacing:.05em;text-transform:uppercase;
-      backdrop-filter:blur(8px);outline:none;
-    }
-    .btn:hover{border-color:var(--color-accent);background:rgba(251,191,36,.12);transform:translateY(-2px);box-shadow:0 4px 20px rgba(251,191,36,.15)}
+    /* Glass panel mixin */
+    .glass{background:rgba(12,12,25,.65);backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.08);border-radius:16px}
 
-    /* Title */
+    /* Buttons */
+    .btn{
+      font-family:var(--fd);font-size:16px;font-weight:600;
+      padding:16px 38px;border:2px solid rgba(255,255,255,.1);border-radius:14px;
+      background:rgba(255,255,255,.06);color:var(--txt);cursor:pointer;
+      transition:all .25s cubic-bezier(.16,1,.3,1);letter-spacing:.06em;text-transform:uppercase;
+      backdrop-filter:blur(12px);outline:none;position:relative;overflow:hidden;
+    }
+    .btn::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,.06));pointer-events:none}
+    .btn:hover{border-color:var(--acc);background:rgba(251,191,36,.1);transform:translateY(-3px) scale(1.02);box-shadow:0 8px 32px rgba(251,191,36,.18)}
+    .btn:active{transform:translateY(0) scale(.98)}
+
+    /* Title — Pixar Movie Poster Splash */
     #title-screen{
       position:fixed;inset:0;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;
-      background:radial-gradient(ellipse at 50% 40%,rgba(30,30,55,.97),rgba(10,10,18,.99));
-      z-index:100;gap:20px;
+      align-items:center;justify-content:flex-end;z-index:100;
+      background:#050510;
+      overflow:hidden;
     }
     #title-screen.hidden{display:none}
-    .title-logo{
-      font-family:var(--font-display);font-size:clamp(2.8rem,11vw,5.5rem);
-      font-weight:700;letter-spacing:.04em;
-      background:linear-gradient(135deg,var(--color-p1) 0%,var(--color-accent) 50%,var(--color-p2) 100%);
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-      filter:drop-shadow(0 0 40px rgba(251,191,36,.35));text-transform:uppercase;
+    .poster-bg{
+      position:absolute;inset:0;z-index:0;
+      background:url('poster.png') center center / cover no-repeat;
+      filter:brightness(0.85) saturate(1.15);
     }
-    .title-sub{font-family:var(--font-display);font-size:15px;color:var(--color-accent);letter-spacing:.28em;text-transform:uppercase}
-    .title-flavor{font-size:13px;color:var(--color-muted);text-align:center;max-width:380px;line-height:1.6;font-style:italic}
-    .mode-buttons{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
-    .controls-hint{font-size:11px;color:var(--color-muted);text-align:center;line-height:2;max-width:440px}
-    .controls-hint span{color:var(--color-text);font-weight:600}
+    .poster-vignette{
+      position:absolute;inset:0;z-index:1;
+      background:
+        linear-gradient(180deg, transparent 0%, transparent 30%, rgba(5,5,16,.4) 55%, rgba(5,5,16,.92) 78%, rgba(5,5,16,1) 100%),
+        radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(5,5,16,.4) 100%);
+    }
+    .title-content{
+      position:relative;z-index:2;
+      display:flex;flex-direction:column;align-items:center;gap:10px;
+      padding-bottom:clamp(20px,4vh,44px);
+      width:100%;
+    }
+    .tlogo{
+      font-family:var(--fh);font-size:clamp(3.5rem,12vw,8rem);
+      letter-spacing:.1em;line-height:.85;
+      background:linear-gradient(180deg,#fff 0%,#ffd740 35%,#ff9100 70%,#ff3d00 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      filter:drop-shadow(0 0 80px rgba(255,150,0,.4)) drop-shadow(0 4px 0 rgba(0,0,0,.7));
+      text-transform:uppercase;
+      text-align:center;
+    }
+    .tsub{
+      font-family:var(--fd);font-size:clamp(11px,1.8vw,16px);
+      color:var(--acc);letter-spacing:.4em;text-transform:uppercase;opacity:.85;
+      text-shadow:0 0 20px rgba(251,191,36,.3);
+    }
+    .tflav{font-size:clamp(11px,1.5vw,13px);color:var(--mut);text-align:center;max-width:420px;line-height:1.6;font-style:italic;padding:0 16px}
+    .tbtns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+    .tkeys{font-size:clamp(9px,1.2vw,11px);color:var(--mut);text-align:center;line-height:2;max-width:460px;padding:0 16px}
+    .tkeys b{color:var(--txt);font-weight:600}
+    .tver{font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.2em;margin-top:2px}
+    .ttagline{
+      font-family:var(--fh);font-size:clamp(12px,2vw,18px);
+      color:#ff6b35;letter-spacing:.12em;text-transform:uppercase;
+      text-shadow:0 0 15px rgba(255,107,53,.4);
+      margin-top:-2px;
+    }
 
     /* HUD */
-    #hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:14px 20px;pointer-events:none;z-index:10}
+    #hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:16px 24px;pointer-events:none;z-index:10}
     #hud.hidden{display:none}
-    .phud{display:flex;flex-direction:column;gap:4px;min-width:150px}
+    .phud{display:flex;flex-direction:column;gap:5px;min-width:200px}
     .phud.right{align-items:flex-end}
-    .pname{font-family:var(--font-display);font-size:13px;font-weight:700;letter-spacing:.06em;text-shadow:0 1px 6px rgba(0,0,0,.7)}
-    .p1c{color:var(--color-p1)}.p2c{color:var(--color-p2)}
-    .hbar-bg{width:160px;height:11px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;border:1px solid rgba(255,255,255,.05)}
-    .hbar{height:100%;border-radius:6px;transition:width .2s ease}
-    .h1{background:linear-gradient(90deg,#22c55e,var(--color-p1))}.h2{background:linear-gradient(90deg,#ec4899,var(--color-p2))}
-    .hstats{font-size:10px;color:var(--color-muted);font-variant-numeric:tabular-nums lining-nums}
-    .hcenter{display:flex;flex-direction:column;align-items:center;gap:2px}
-    .hround{font-family:var(--font-display);font-size:12px;font-weight:600;color:var(--color-gold);letter-spacing:.12em}
-    .htimer{font-family:var(--font-display);font-size:26px;font-weight:700;color:var(--color-text);text-shadow:0 2px 10px rgba(0,0,0,.5);font-variant-numeric:tabular-nums}
-    .htimer.warn{color:var(--color-p2);animation:pulse .4s ease infinite alternate}
-    @keyframes pulse{from{opacity:1}to{opacity:.4}}
-    .combo-hud{font-family:var(--font-display);font-size:11px;color:var(--color-accent);letter-spacing:.08em;min-height:16px}
+    .pname{font-family:var(--fh);font-size:20px;letter-spacing:.1em;text-shadow:0 2px 8px rgba(0,0,0,.7)}
+    .p1c{color:var(--p1)}.p2c{color:var(--p2)}
 
-    /* Game Over / Result */
-    #result-screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,10,18,.94);z-index:100;gap:16px}
+    /* Health bars - premium glass */
+    .hbar-wrap{position:relative;width:200px;height:16px;border-radius:8px;overflow:hidden;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);box-shadow:inset 0 2px 4px rgba(0,0,0,.3)}
+    .hbar{height:100%;border-radius:8px;transition:width .2s ease;position:relative}
+    .hbar::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.25) 0%,transparent 50%,rgba(0,0,0,.15) 100%);border-radius:8px}
+    .h1{background:linear-gradient(90deg,#16a34a,var(--p1),#86efac)}.h2{background:linear-gradient(90deg,#be185d,var(--p2),#f9a8d4)}
+    .hbar-wrap.low .hbar{animation:hpulse .4s ease infinite alternate}
+    @keyframes hpulse{from{filter:brightness(1)}to{filter:brightness(1.4)}}
+    .hp-text{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:var(--fh);font-size:12px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);letter-spacing:.05em;z-index:2}
+    .hstats{font-size:10px;color:var(--mut);font-variant-numeric:tabular-nums lining-nums}
+
+    .hcenter{display:flex;flex-direction:column;align-items:center;gap:2px}
+    .hround{font-family:var(--fh);font-size:16px;color:var(--gold);letter-spacing:.15em}
+    .htimer{font-family:var(--fh);font-size:36px;color:var(--txt);text-shadow:0 2px 12px rgba(0,0,0,.5);font-variant-numeric:tabular-nums;letter-spacing:.05em}
+    .htimer.warn{color:var(--p2);animation:tpulse .35s ease infinite alternate}
+    @keyframes tpulse{from{opacity:1;text-shadow:0 0 20px rgba(244,114,182,.5)}to{opacity:.4;text-shadow:none}}
+    .combo-hud{font-family:var(--fh);font-size:14px;color:var(--acc);letter-spacing:.1em;min-height:18px;text-shadow:0 0 10px rgba(251,191,36,.3)}
+
+    /* Result */
+    #result-screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;gap:16px}
     #result-screen.hidden{display:none}
-    .res-winner{font-family:var(--font-display);font-size:clamp(1.2rem,3.5vw,2.2rem);font-weight:700;letter-spacing:.03em;text-transform:uppercase;text-align:center;line-height:1.3;max-width:90vw;padding:0 20px}
-    .res-score{font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--color-muted);letter-spacing:.1em}
-    .res-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:12px;color:var(--color-muted);text-align:center;margin:8px 0}
-    .res-stats .val{font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--color-text)}
-    .res-stats .lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase}
-    .res-buttons{display:flex;gap:12px;margin-top:8px}
+    .res-bg{position:absolute;inset:0;background:rgba(6,6,14,.92);backdrop-filter:blur(8px)}
+    .res-content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:16px}
+    .res-winner{font-family:var(--fh);font-size:clamp(1.4rem,4vw,2.6rem);letter-spacing:.06em;text-transform:uppercase;text-align:center;line-height:1.2;max-width:85vw}
+    .res-score{font-family:var(--fh);font-size:28px;color:var(--mut);letter-spacing:.15em}
+    .res-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;text-align:center}
+    .res-grid .v{font-family:var(--fh);font-size:22px;color:var(--txt)}
+    .res-grid .l{font-size:9px;color:var(--mut);letter-spacing:.12em;text-transform:uppercase}
+    .res-btns{display:flex;gap:14px;margin-top:8px}
 
     /* Touch */
     #touch-controls{position:fixed;bottom:0;left:0;right:0;display:none;justify-content:space-between;padding:12px 14px;z-index:20}
-    .tdpad{display:grid;grid-template-columns:repeat(3,50px);grid-template-rows:repeat(3,50px);gap:3px}
-    .tbtn{width:50px;height:50px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:var(--color-text);font-size:18px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation}
+    .tdpad{display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:3px}
+    .tbtn{width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:var(--txt);font-size:18px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation}
     .tbtn:active{background:rgba(255,255,255,.2)}
     .tbtn.up{grid-column:2;grid-row:1}.tbtn.down{grid-column:2;grid-row:3}.tbtn.left{grid-column:1;grid-row:2}.tbtn.right{grid-column:3;grid-row:2}
     .abtns{display:flex;flex-direction:column;gap:5px;align-items:flex-end;justify-content:center}
-    .abtn{width:64px;height:48px;border-radius:12px;font-family:var(--font-display);font-size:10px;font-weight:700;border:1px solid rgba(255,255,255,.12);color:var(--color-text);display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation}
-    .abtn.at{background:rgba(244,114,182,.2);border-color:rgba(244,114,182,.3)}
-    .abtn.da{background:rgba(74,222,128,.2);border-color:rgba(74,222,128,.3)}
-    .abtn.sp{background:rgba(251,191,36,.2);border-color:rgba(251,191,36,.3)}
-    .abtn.pa{background:rgba(139,92,246,.2);border-color:rgba(139,92,246,.3)}
+    .abtn{width:66px;height:50px;border-radius:14px;font-family:var(--fh);font-size:13px;letter-spacing:.06em;border:1px solid rgba(255,255,255,.1);color:var(--txt);display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation}
+    .abtn.at{background:rgba(244,114,182,.15)}.abtn.da{background:rgba(74,222,128,.15)}.abtn.sp{background:rgba(251,191,36,.15)}.abtn.pa{background:rgba(139,92,246,.15)}
     @media(pointer:coarse){#touch-controls{display:flex}}
-    @media(max-width:600px){.hbar-bg{width:100px}#hud{padding:8px 8px}}
+    @media(max-width:600px){.hbar-wrap{width:130px;height:13px}#hud{padding:10px 10px}.pname{font-size:16px}}
   </style>
 </head>
 <body>
   <canvas id="gc"></canvas>
 
   <div id="title-screen">
-    <div class="title-logo">Croc Clash</div>
-    <div class="title-sub">Branson Pillow Brawl</div>
-    <div class="title-flavor">"Two crocs enter the Branson strip. One croc leaves with the good pillow."</div>
-    <div class="mode-buttons">
-      <button class="btn" id="btn-pvp">🐊 2 Player 🐊</button>
-      <button class="btn" id="btn-ai">🐊 vs AI 🤖</button>
-    </div>
-    <div class="controls-hint">
-      <span>Croc 1:</span> WASD move · <span>F</span> pillow smack · <span>G</span> belly bounce · <span>H</span> pillow tornado · <span>R</span> parry<br/>
-      <span>Croc 2:</span> Arrows move · <span>L</span> pillow smack · <span>K</span> belly bounce · <span>J</span> pillow tornado · <span>P</span> parry
+    <div class="poster-bg"></div>
+    <div class="poster-vignette"></div>
+    <div class="title-content">
+      <div class="tlogo">Croc Clash</div>
+      <div class="tsub">Branson Pillow Brawl</div>
+      <div class="ttagline">Two crocs enter. One leaves with the good pillow.</div>
+      <div class="tbtns">
+        <button class="btn" id="btn-pvp">🐊 2 Player 🐊</button>
+        <button class="btn" id="btn-ai">🐊 vs AI 🤖</button>
+      </div>
+      <div class="tkeys">
+        <b>Croc 1:</b> WASD move · <b>F</b> pillow smack · <b>G</b> belly bounce · <b>H</b> pillow tornado · <b>R</b> parry<br/>
+        <b>Croc 2:</b> Arrows move · <b>L</b> pillow smack · <b>K</b> belly bounce · <b>J</b> pillow tornado · <b>P</b> parry
+      </div>
+      <div class="tver">V2.0 — HOLLYWOOD EDITION</div>
     </div>
   </div>
 
   <div id="hud" class="hidden">
     <div class="phud">
-      <div class="pname p1c" id="p1name">🐊 GATOR GARY</div>
-      <div class="hbar-bg"><div class="hbar h1" id="p1hp" style="width:100%"></div></div>
-      <div class="hstats" id="p1s">HP 100 · W 0</div>
+      <div class="pname p1c">GATOR GARY</div>
+      <div class="hbar-wrap" id="p1wrap"><div class="hbar h1" id="p1hp" style="width:100%"></div><div class="hp-text" id="p1hpt">100</div></div>
+      <div class="hstats" id="p1s">Wins 0</div>
       <div class="combo-hud" id="p1combo"></div>
     </div>
     <div class="hcenter">
@@ -127,20 +172,23 @@
       <div class="htimer" id="htimer">30</div>
     </div>
     <div class="phud right">
-      <div class="pname p2c" id="p2name">CROC CARL 🐊</div>
-      <div class="hbar-bg"><div class="hbar h2" id="p2hp" style="width:100%"></div></div>
-      <div class="hstats" id="p2s">HP 100 · W 0</div>
+      <div class="pname p2c">CROC CARL</div>
+      <div class="hbar-wrap" id="p2wrap"><div class="hbar h2" id="p2hp" style="width:100%"></div><div class="hp-text" id="p2hpt">100</div></div>
+      <div class="hstats" id="p2s">Wins 0</div>
       <div class="combo-hud" id="p2combo"></div>
     </div>
   </div>
 
   <div id="result-screen" class="hidden">
-    <div class="res-winner" id="res-winner"></div>
-    <div class="res-score" id="res-score"></div>
-    <div class="res-stats" id="res-stats"></div>
-    <div class="res-buttons">
-      <button class="btn" id="btn-rematch">🐊 Rematch</button>
-      <button class="btn" id="btn-menu2">🏠 Menu</button>
+    <div class="res-bg"></div>
+    <div class="res-content">
+      <div class="res-winner" id="res-winner"></div>
+      <div class="res-score" id="res-score"></div>
+      <div class="res-grid" id="res-grid"></div>
+      <div class="res-btns">
+        <button class="btn" id="btn-rematch">🐊 REMATCH</button>
+        <button class="btn" id="btn-menu2">MENU</button>
+      </div>
     </div>
   </div>
 
