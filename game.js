@@ -480,7 +480,7 @@ function loadNarration(){
 function playNarr(el){ if(!el) return; try{ el.currentTime=0; el.play().catch(()=>{}); }catch(e){} }
 
 // ─── VIDEO OVERLAY ───
-let videoPlaying = false, videoEl = null, videoTimeout = null;
+let videoPlaying = false, videoLocked = false, videoEl = null, videoTimeout = null;
 // Alternating KO finishing videos per winner
 const KO_VIDS_GARY = ['video/ko-gary-wins.mp4','video/ko-gary-wins-2.mp4'];
 const KO_VIDS_CARL = ['video/ko-carl-wins.mp4','video/ko-carl-wins-2.mp4'];
@@ -494,17 +494,28 @@ function getKOVideo(winner){
 function initVideoOverlay(){
   videoEl = document.getElementById('special-video');
   if(!videoEl) return;
+  // Auto-hide when video finishes naturally
   videoEl.addEventListener('ended', () => hideVideo());
   videoEl.addEventListener('error', () => hideVideo());
-  videoEl.addEventListener('click', () => hideVideo());
-  videoEl.addEventListener('touchstart', () => hideVideo());
+  // Skip on click/touch ONLY if not locked (KO/round-win vids are locked)
+  videoEl.addEventListener('click', () => { if(!videoLocked) hideVideo(); });
+  videoEl.addEventListener('touchstart', (e) => { if(!videoLocked){ hideVideo(); } else { e.preventDefault(); } }, {passive:false});
 }
-function playSpecialVideo(src, duration){
+function playSpecialVideo(src, duration, locked){
   duration = duration || 3000;
-  if(!videoEl || videoPlaying) return;
+  if(!videoEl) return;
+  // If locked video is playing, don't interrupt it; otherwise allow override
+  if(videoPlaying && videoLocked) return;
+  if(videoPlaying) hideVideo();
+  videoLocked = !!locked;
   videoEl.src = src;
+  videoEl.preload = 'auto';
   videoEl.style.display = 'block';
-  videoEl.play().catch(() => hideVideo());
+  videoEl.style.pointerEvents = locked ? 'none' : 'auto';
+  videoEl.muted = true;
+  videoEl.playsInline = true;
+  const playPromise = videoEl.play();
+  if(playPromise) playPromise.catch(() => hideVideo());
   videoPlaying = true;
   if(videoTimeout) clearTimeout(videoTimeout);
   videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, duration);
@@ -514,7 +525,9 @@ function hideVideo(){
   videoEl.pause();
   videoEl.style.display = 'none';
   videoEl.removeAttribute('src');
+  videoEl.load(); // reset internal state
   videoPlaying = false;
+  videoLocked = false;
   if(videoTimeout){ clearTimeout(videoTimeout); videoTimeout = null; }
 }
 
@@ -816,7 +829,6 @@ function doPillowUppercut(attacker, victim){
     if(victim.hp <= 0){
       victim.launchIsKO = true;
       slowMo(SLO_DUR+0.5, SLO_SCALE);
-      playSpecialVideo(getKOVideo(attacker), 5000);
       playNarr(narrKO);
     } else {
       slowMo(0.4, 0.2);
@@ -872,7 +884,6 @@ function miniPillowHit(attacker, victim, dir){
     victim.launchIsKO = true;
     victim.grounded = false;
     slowMo(SLO_DUR+0.3, SLO_SCALE);
-    playSpecialVideo(getKOVideo(attacker), 5000);
     playNarr(narrKO);
   }
   slam(`-1 HP! (${victim.hp}/${MAX_HP})`, '#ffd740', 0.8);
@@ -923,7 +934,6 @@ function boomerangHit(attacker, victim, dir){
     victim.launchIsKO = true;
     victim.grounded = false;
     slowMo(SLO_DUR+0.5, SLO_SCALE);
-    playSpecialVideo(getKOVideo(attacker), 5000);
     playNarr(narrKO);
   } else {
     slowMo(0.3, 0.25);
@@ -969,6 +979,15 @@ function updateAllProjectiles(dt){
     if(p.type === 'freeze' && Math.random()<dt*12) em(p.x,p.y,rand(-30,30),rand(-30,30),0.3,'#93c5fd',rand(3,7),'star');
     if(p.type === 'sax'   && Math.random()<dt*20) em(p.x+rand(-30,30),p.y+rand(-20,20),rand(-50,50),rand(-80,0),0.5,'#ffd740',rand(5,12),'star');
 
+    // ─── IMPACT ANIMATION STATE ───
+    if(p.impacting){
+      p.impactT -= dt;
+      p.impactScale = 1 + (1 - p.impactT/p.impactDur) * 1.2; // expand
+      p.impactAlpha = Math.max(0, p.impactT/p.impactDur); // fade out
+      if(p.impactT <= 0){ projectiles.splice(i,1); }
+      continue;
+    }
+
     // Hit check — hitboxes per type
     let hw, hh;
     if(p.type==='sax'){ hw=100; hh=100; }
@@ -981,11 +1000,28 @@ function updateAllProjectiles(dt){
        Math.abs(p.x - (target.x+target.w/2)) < hw &&
        Math.abs(p.y - (target.y+target.h/2)) < hh){
       p.alive = false;
+      // Stop projectile at impact point and start impact animation
+      p.vx = 0; p.vy = 0;
+      p.impacting = true;
+      p.impactT = 0.25; // 250ms impact animation
+      p.impactDur = 0.25;
+      p.impactScale = 1;
+      p.impactAlpha = 1;
+      // Burst particles at impact
+      const impactColors = {
+        pillow:'#fff', pillow_mini:'#ffd740', freeze:'#93c5fd',
+        sax:'#ffd740', boomerang:'#a78bfa'
+      };
+      const ic = impactColors[p.type]||'#fff';
+      sparks(p.x, p.y, 8, ic);
+      feathers(p.x, p.y, 6, ic);
+      // Call hit handler
       if(p.type === 'pillow') pillowHit(p.owner, target, p.face, p.isDouble);
       else if(p.type === 'pillow_mini') miniPillowHit(p.owner, target, p.face);
       else if(p.type === 'boomerang') boomerangHit(p.owner, target, p.face);
       else if(p.type === 'freeze') freezeHit(p.owner, target);
       else if(p.type === 'sax') saxHit(p.owner, target, p.face);
+      continue;
     }
 
     // Boomerang returns past owner — despawn
@@ -1014,6 +1050,27 @@ function drawProjectiles(){
 
     ctx.save();
     ctx.translate(p.x, p.y);
+
+    // Impact animation — expand, flash, and fade
+    if(p.impacting){
+      const s = p.impactScale||1;
+      const a = p.impactAlpha||0;
+      ctx.globalAlpha = a;
+      ctx.scale(s, s);
+      // Impact burst ring
+      const ringColor = p.type==='freeze'?'#93c5fd':p.type==='sax'?'#ffd740':p.type==='boomerang'?'#a78bfa':'#fff';
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth = 3 * a;
+      ctx.shadowColor = ringColor; ctx.shadowBlur = 20 * a;
+      ctx.beginPath(); ctx.arc(0, 0, 30*s, 0, TAU); ctx.stroke();
+      // Inner flash
+      ctx.fillStyle = ringColor;
+      ctx.globalAlpha = a * 0.5;
+      ctx.beginPath(); ctx.arc(0, 0, 15, 0, TAU); ctx.fill();
+      ctx.shadowBlur=0; ctx.restore();
+      continue;
+    }
+
     ctx.rotate(p.rot);
 
     if(p.type === 'pillow'){
@@ -1120,8 +1177,6 @@ function pillowHit(attacker, victim, dir, isDouble){
   if(victim.hp <= 0){
     victim.launchIsKO = true;
     slowMo(SLO_DUR+0.5, SLO_SCALE);
-    // Play alternating winner-specific KO finishing video
-    playSpecialVideo(getKOVideo(attacker), 5000);
     playNarr(narrKO);
   } else {
     slowMo(0.5, 0.2);
@@ -1607,7 +1662,7 @@ function drawCroc(c){
 }
 
 // ─── CROC CONSTRUCTOR ───
-let loadout = { p1:{power1:'freeze',power2:'sax',skin:'default'}, p2:{power1:'lightning',power2:'mystery',skin:'default'} };
+let loadout = { p1:{power1:'freeze',power2:'sax',skin:'default'}, p2:{power1:'lightning',power2:'shotgun',skin:'default'} };
 
 function mkCroc(x,face,name,charKey){
   return {x,y:FLOOR_Y-CH,vx:0,vy:0,w:CW,h:CH,face,name,charKey,skin:'default',
@@ -1842,13 +1897,8 @@ function updateCroc(c,inp,o,dt){
   // Speed boost decay
   if(c.speedBoostT>0){ c.speedBoostT-=dt; if(c.speedBoostT<=0){c.speedBoost=1;} }
 
-  // Mystery box proximity check
-  if(mysteryBox && inp.power1 && c.pow1CD<=0 && POWERS[c.power1]?.name==='Mystery Box'){
-    checkMysteryPickup(c, o);
-  }
-  if(mysteryBox && inp.power2 && c.pow2CD<=0 && POWERS[c.power2]?.name==='Mystery Box'){
-    checkMysteryPickup(c, o);
-  }
+  // Mystery box auto-pickup on walk-over (no button needed)
+  if(mysteryBox) checkMysteryPickup(c, o);
 
   const wasCB=c.comebackActive;
   c.comebackActive=c.hp<=COMEBACK_TH&&c.alive;
@@ -1939,21 +1989,13 @@ function updateCroc(c,inp,o,dt){
 
   // POWER 1
   if(inp.power1&&c.pow1CD<=0&&!c.parrying){
-    if(c.power1!=='mystery'||(c.power1==='mystery'&&!mysteryBox)){
-      const def=POWERS[c.power1];
-      if(def){ c.pow1CD=def.cd; useSpecialPower(c,o,c.power1); }
-    } else if(c.power1==='mystery'&&mysteryBox){
-      checkMysteryPickup(c,o);
-    }
+    const def=POWERS[c.power1];
+    if(def){ c.pow1CD=def.cd; useSpecialPower(c,o,c.power1); }
   }
   // POWER 2
   if(inp.power2&&c.pow2CD<=0&&!c.parrying){
-    if(c.power2!=='mystery'||(c.power2==='mystery'&&!mysteryBox)){
-      const def=POWERS[c.power2];
-      if(def){ c.pow2CD=def.cd; useSpecialPower(c,o,c.power2); }
-    } else if(c.power2==='mystery'&&mysteryBox){
-      checkMysteryPickup(c,o);
-    }
+    const def=POWERS[c.power2];
+    if(def){ c.pow2CD=def.cd; useSpecialPower(c,o,c.power2); }
   }
 
   c.vy+=GRAVITY*dt;c.x+=c.vx*dt;c.y+=c.vy*dt;
@@ -2012,47 +2054,70 @@ function updateCroc(c,inp,o,dt){
 function getAI(ai,tgt){
   const inp={left:0,right:0,up:0,attack:0,dash:0,parry:0,tailwhip:0,launch:0,power1:0,power2:0,rage:0};
   const dx=tgt.x-ai.x,adx=Math.abs(dx);
+  const hpRatio = ai.hp / MAX_HP; // 0-1, lower = more desperate
+  const losing = ai.hp < tgt.hp;
+  const aggro = losing ? 1.6 : 1.0; // More aggressive when behind
 
-  // Movement — approach but sometimes back off
-  if(adx>220){if(dx>0)inp.right=1;else inp.left=1}
-  else if(adx<80){if(dx>0)inp.left=1;else inp.right=1}
+  // Movement — approach, dodge projectiles, strafe
+  if(adx>180){if(dx>0)inp.right=1;else inp.left=1}
+  else if(adx<60&&Math.random()<0.15){if(dx>0)inp.left=1;else inp.right=1} // dodge out
+  else if(adx>=60&&adx<=180&&Math.random()<0.04){ // strafe randomly
+    if(Math.random()<0.5)inp.left=1;else inp.right=1;
+  }
 
-  if(ai.grounded&&Math.random()<0.003)inp.up=1;
-  if(adx<110&&ai.atkCD<=0&&Math.random()<0.06)inp.attack=1;
-  if(tgt.atk&&tgt.atkT>.12&&adx<100&&ai.parryCD<=0&&Math.random()<0.02)inp.parry=1;
-  if(adx<180&&adx>80&&ai.dashCD<=0&&Math.random()<0.006)inp.dash=1;
-  if(ai.launchCD<=0&&adx<300&&Math.random()<0.003)inp.launch=1;
-  if(ai.hp<=2&&adx<120){inp.left=dx>0?1:0;inp.right=dx<0?1:0}
+  // Jump more often — dodge + aerial attacks
+  if(ai.grounded&&Math.random()<0.008*aggro)inp.up=1;
+  // Dodge jump when player attacks close
+  if(tgt.atk&&adx<130&&ai.grounded&&Math.random()<0.04)inp.up=1;
 
-  // Special powers — use them actively
+  // Attack — much more aggressive
+  if(adx<120&&ai.atkCD<=0&&Math.random()<0.12*aggro)inp.attack=1;
+
+  // Parry — react to incoming attacks (smarter timing)
+  if(tgt.atk&&tgt.atkT>.08&&adx<120&&ai.parryCD<=0&&Math.random()<0.06*aggro)inp.parry=1;
+  // Parry incoming projectiles
+  if(projectiles.some(p=>p.owner===tgt&&Math.abs(p.x-(ai.x+ai.w/2))<150)&&ai.parryCD<=0&&Math.random()<0.05)inp.parry=1;
+
+  // Dash — offensive and defensive
+  if(adx<200&&adx>60&&ai.dashCD<=0&&Math.random()<0.012*aggro)inp.dash=1;
+  // Dash away when low HP
+  if(hpRatio<=0.35&&adx<100&&ai.dashCD<=0&&Math.random()<0.02)inp.dash=1;
+
+  // Launch pillows more often
+  if(ai.launchCD<=0&&adx<350&&Math.random()<0.008*aggro)inp.launch=1;
+
+  // Retreat when very low HP
+  if(ai.hp<=1&&adx<140){inp.left=dx>0?1:0;inp.right=dx<0?1:0}
+
+  // Special powers — use them much more actively
   const pow1Name = ai.power1;
   const pow2Name = ai.power2;
-  // Ranged powers used more from distance, melee powers used close
   const rangedPowers = ['freeze','sax','lightning','shotgun','boomerang','rapidfire'];
   const meleePowers = ['tornado','tailwhip','uppercut'];
   if(ai.pow1CD<=0){
     const isRanged = rangedPowers.includes(pow1Name);
     const isMelee = meleePowers.includes(pow1Name);
-    const chance = (isRanged && adx > 150 && adx < 400) ? 0.006 :
-                   (isMelee && adx < 180) ? 0.005 :
-                   (pow1Name==='mystery' && !mysteryBox) ? 0.003 : 0.002;
+    const chance = (isRanged && adx > 120 && adx < 450) ? 0.015*aggro :
+                   (isMelee && adx < 200) ? 0.012*aggro :
+                   (pow1Name==='mystery' && !mysteryBox) ? 0.008 : 0.006;
     if(Math.random()<chance) inp.power1=1;
   }
   if(ai.pow2CD<=0&&!inp.power1){
     const isRanged = rangedPowers.includes(pow2Name);
     const isMelee = meleePowers.includes(pow2Name);
-    const chance = (isRanged && adx > 150 && adx < 400) ? 0.005 :
-                   (isMelee && adx < 180) ? 0.004 :
-                   (pow2Name==='mystery' && !mysteryBox) ? 0.002 : 0.002;
+    const chance = (isRanged && adx > 120 && adx < 450) ? 0.012*aggro :
+                   (isMelee && adx < 200) ? 0.010*aggro :
+                   (pow2Name==='mystery' && !mysteryBox) ? 0.006 : 0.005;
     if(Math.random()<chance) inp.power2=1;
   }
 
-  // Rage — use when off cooldown and in striking range (but less often than player)
-  if(ai.rageCD<=0&&adx<250&&Math.random()<0.002) inp.rage=1;
+  // Rage — use more aggressively, especially when losing
+  if(ai.rageCD<=0&&adx<300&&Math.random()<0.005*aggro) inp.rage=1;
 
-  // Mystery box pickup if nearby
-  if(mysteryBox&&dist(ai.x+ai.w/2,ai.y+ai.h/2,mysteryBox.x,mysteryBox.y)<150&&Math.random()<0.02){
-    if(dx>0)inp.right=1;else inp.left=1;
+  // Mystery box — walk toward it to auto-pickup
+  if(mysteryBox&&dist(ai.x+ai.w/2,ai.y+ai.h/2,mysteryBox.x,mysteryBox.y)<200){
+    const mdx=mysteryBox.x-(ai.x+ai.w/2);
+    if(mdx>0)inp.right=1;else inp.left=1;
   }
 
   return inp;
@@ -2115,7 +2180,13 @@ function endRound(w){
   matchStats.p1p+=p1.parryCount;matchStats.p2p+=p2.parryCount;
   if(w){w.wins++;if(w.hp>=MAX_HP){slam(pick(PERFECT_LINES),'#ffd740',2);sfxPerfect();goldenRain(AW/2,AH*.25);bloomInt=1}else slam(pick(KO_LINES),'#ff3d00',1.8)}
   else slam("TIME'S UP!!",'#fbbf24',1.5);
-  setTimeout(()=>{hideVideo();if(p1.wins>=ROUNDS_TO_WIN||p2.wins>=ROUNDS_TO_WIN)endMatch();else{roundNum++;startCD()}},3200);
+  // Play winner KO video after EVERY round (locked = unskippable, auto-hides after 1 play)
+  if(w){
+    hideVideo(); // clear any in-flight combat KO video
+    playSpecialVideo(getKOVideo(w), 6000, true);
+  }
+  // Wait for video to finish before advancing (7.5s gives 6s video + buffer)
+  setTimeout(()=>{hideVideo();if(p1.wins>=ROUNDS_TO_WIN||p2.wins>=ROUNDS_TO_WIN)endMatch();else{roundNum++;startCD()}},7500);
 }
 function endMatch(){
   state='result';
@@ -2125,8 +2196,8 @@ function endMatch(){
   $('res-winner').style.color=wc;
   $('res-score').textContent=`${p1.wins} — ${p2.wins}`;
   $('res-grid').innerHTML=`<div><div class="v">${matchStats.p1h}</div><div class="l">Gary Hits</div></div><div><div class="v">${matchStats.p2h}</div><div class="l">Carl Hits</div></div><div><div class="v">${matchStats.p1c}</div><div class="l">Gary Best Combo</div></div><div><div class="v">${matchStats.p2c}</div><div class="l">Carl Best Combo</div></div><div><div class="v">${matchStats.p1p}</div><div class="l">Gary Parries</div></div><div><div class="v">${matchStats.p2p}</div><div class="l">Carl Parries</div></div>`;
-  // Play alternating winner cinematic finishing video
-  playSpecialVideo(getKOVideo(w), 7000);
+  // Play alternating winner cinematic finishing video (locked = unskippable)
+  playSpecialVideo(getKOVideo(w), 7000, true);
   // Show result screen after a short delay so video plays first
   setTimeout(() => { $('result-screen').classList.remove('hidden'); }, 800);
 
@@ -2565,17 +2636,18 @@ function showOnlineLobby(){
     };
     MP.onOpponentInput = (inp) => {
       if(isOnline && amHost){
-        // Full replacement — guest sends complete snapshot every frame
+        // Continuous keys: replace (latest state wins)
         remoteInput.left   = !!inp.left;
         remoteInput.right  = !!inp.right;
-        remoteInput.up     = !!inp.up;
-        remoteInput.attack = !!inp.attack;
-        remoteInput.dash   = !!inp.dash;
-        remoteInput.parry  = !!inp.parry;
-        remoteInput.launch = !!inp.launch;
-        remoteInput.power1 = !!inp.power1;
-        remoteInput.power2 = !!inp.power2;
-        remoteInput.rage   = !!inp.rage;
+        // One-shot keys: ACCUMULATE with OR so fast taps aren't lost between frames
+        remoteInput.up     = remoteInput.up     || !!inp.up;
+        remoteInput.attack = remoteInput.attack || !!inp.attack;
+        remoteInput.dash   = remoteInput.dash   || !!inp.dash;
+        remoteInput.parry  = remoteInput.parry  || !!inp.parry;
+        remoteInput.launch = remoteInput.launch || !!inp.launch;
+        remoteInput.power1 = remoteInput.power1 || !!inp.power1;
+        remoteInput.power2 = remoteInput.power2 || !!inp.power2;
+        remoteInput.rage   = remoteInput.rage   || !!inp.rage;
       }
     };
     MP.onError = (msg) => {
@@ -2613,15 +2685,135 @@ function hideOnlineLobby(){
   if(el) el.classList.add('hidden');
 }
 
+// ─── ONLINE LOADOUT STATE ───
+let onlineLoadoutReady = { local: false, remote: false };
+let remoteLoadout = null;
+
 function launchOnlineGame(){
   hideOnlineLobby();
   isOnline = true;
   isAI = false;
   amHost = MP.isHost();
-  // Use default loadout for online (skip loadout screen for simplicity)
-  loadout.p1 = {power1:'freeze',power2:'shotgun',skin:'default'};
-  loadout.p2 = {power1:'lightning',power2:'tornado',skin:'default'};
-  // Notify server that game is starting
+  onlineLoadoutReady = { local: false, remote: false };
+  remoteLoadout = null;
+
+  // Listen for opponent's loadout
+  MP.onLoadout = (lo, from) => {
+    remoteLoadout = lo;
+    onlineLoadoutReady.remote = true;
+    tryStartOnlineMatch();
+  };
+
+  // Show loadout screen for this player's character only
+  buildOnlineLoadoutScreen();
+}
+
+function buildOnlineLoadoutScreen(){
+  const totalWins = getTotalWins();
+  const ls = $('loadout-screen');
+  if(!ls) return;
+
+  // Host picks P1 (Gary), Guest picks P2 (Carl)
+  const mySlot = amHost ? 'p1' : 'p2';
+  const playerLabel = amHost ? '\u{1F40A} GATOR GARY (P1)' : '\u{1F40A} CROC CARL (P2)';
+  const playerColor = amHost ? '#4ade80' : '#f472b6';
+  const charKey = amHost ? 'gary' : 'carl';
+
+  loadoutSelections[mySlot] = {power1:null,power2:null,skin:'default'};
+
+  function renderOnlineLoadout(){
+    const sel = loadoutSelections[mySlot];
+
+    // Build power cards HTML
+    var powersHtml = '';
+    POWER_KEYS.forEach(function(k){
+      var def=POWERS[k];
+      var isSelected = sel.power1===k||sel.power2===k;
+      powersHtml += '<div class="lo-power-card '+(isSelected?'selected':'')+'" data-power="'+k+'">'
+        +'<span class="lo-power-icon">'+def.icon+'</span>'
+        +'<span class="lo-power-name">'+def.name+'</span>'
+        +'<span class="lo-power-desc">'+def.desc+'</span>'
+        +'<span class="lo-power-cd">'+def.cd+'s CD</span>'
+        +'</div>';
+    });
+
+    // Build skin cards HTML
+    var skinsHtml = '';
+    SKIN_DEFS[charKey].forEach(function(sk){
+      var locked = sk.winsReq>0 && totalWins<sk.winsReq;
+      var isSel = sel.skin===sk.id;
+      skinsHtml += '<div class="lo-skin-card '+(isSel?'selected':'')+' '+(locked?'locked':'')+'" data-skin="'+sk.id+'" data-wins="'+sk.winsReq+'">'
+        +'<div class="lo-skin-preview">'+(locked?'\u{1F512}':'\u{1F455}')+'</div>'
+        +'<span class="lo-skin-name">'+sk.name+'</span>'
+        +(locked?'<span class="lo-skin-lock">'+sk.winsReq+' wins</span>':'')
+        +'</div>';
+    });
+
+    var hintText = onlineLoadoutReady.local ? 'Waiting for opponent\u2026' : 'Select 2 powers to continue';
+    var btnText = onlineLoadoutReady.local ? '\u23f3 WAITING\u2026' : '\u2694\ufe0f READY!';
+    var btnDisabled = (sel.power1 && sel.power2 && !onlineLoadoutReady.local) ? '' : 'disabled';
+
+    ls.innerHTML = '<div class="lo-bg"></div>'
+      +'<div class="lo-content glass">'
+      +'<div class="lo-title" style="color:'+playerColor+'">'+playerLabel+'</div>'
+      +'<div class="lo-subtitle">Choose 2 Powers</div>'
+      +'<div class="lo-section-label">SPECIAL POWERS</div>'
+      +'<div class="lo-powers" id="lo-powers">'+powersHtml+'</div>'
+      +'<div class="lo-section-label">SKIN</div>'
+      +'<div class="lo-skins" id="lo-skins">'+skinsHtml+'</div>'
+      +'<div class="lo-hint" id="lo-hint">'+hintText+'</div>'
+      +'<button class="btn btn-primary lo-fight-btn" id="lo-fight" '+btnDisabled+'>'+btnText+'</button>'
+      +'</div>';
+
+    // Power card click
+    ls.querySelectorAll('.lo-power-card').forEach(function(card){
+      card.addEventListener('click',function(){
+        if(onlineLoadoutReady.local) return;
+        var k=card.dataset.power;
+        if(sel.power1===k){ sel.power1=null; }
+        else if(sel.power2===k){ sel.power2=null; }
+        else if(!sel.power1){ sel.power1=k; }
+        else if(!sel.power2){ sel.power2=k; }
+        else { sel.power1=sel.power2;sel.power2=k; }
+        renderOnlineLoadout();
+      });
+    });
+
+    // Skin card click
+    ls.querySelectorAll('.lo-skin-card:not(.locked)').forEach(function(card){
+      card.addEventListener('click',function(){
+        if(onlineLoadoutReady.local) return;
+        sel.skin=card.dataset.skin;
+        renderOnlineLoadout();
+      });
+    });
+
+    // Ready button
+    var fightBtn=$('lo-fight');
+    if(fightBtn && !onlineLoadoutReady.local){
+      fightBtn.addEventListener('click',function(){
+        if(!sel.power1||!sel.power2) return;
+        onlineLoadoutReady.local = true;
+        MP.sendLoadout({power1:sel.power1, power2:sel.power2, skin:sel.skin});
+        renderOnlineLoadout();
+        tryStartOnlineMatch();
+      });
+    }
+  }
+
+  renderOnlineLoadout();
+  ls.classList.remove('hidden');
+  $('title-screen').classList.add('hidden');
+}
+
+function tryStartOnlineMatch(){
+  if(!onlineLoadoutReady.local || !onlineLoadoutReady.remote) return;
+  // Apply loadouts
+  const mySlot = amHost ? 'p1' : 'p2';
+  const theirSlot = amHost ? 'p2' : 'p1';
+  loadout[mySlot] = loadoutSelections[mySlot];
+  loadout[theirSlot] = remoteLoadout || {power1:'freeze',power2:'shotgun',skin:'default'};
+  $('loadout-screen').classList.add('hidden');
   if(typeof MP !== 'undefined') MP.sendGameStart();
   startGame(false);
 }
@@ -2818,10 +3010,15 @@ loadImages(()=>{
       MP.onStateUpdate = (s) => { if(isOnline && !amHost) applyGameState(s); };
       MP.onOpponentInput = (inp) => {
         if(isOnline && amHost){
-          remoteInput.left=!!inp.left;remoteInput.right=!!inp.right;remoteInput.up=!!inp.up;
-          remoteInput.attack=!!inp.attack;remoteInput.dash=!!inp.dash;remoteInput.parry=!!inp.parry;
-          remoteInput.launch=!!inp.launch;remoteInput.power1=!!inp.power1;remoteInput.power2=!!inp.power2;
-          remoteInput.rage=!!inp.rage;
+          remoteInput.left=!!inp.left;remoteInput.right=!!inp.right;
+          remoteInput.up=remoteInput.up||!!inp.up;
+          remoteInput.attack=remoteInput.attack||!!inp.attack;
+          remoteInput.dash=remoteInput.dash||!!inp.dash;
+          remoteInput.parry=remoteInput.parry||!!inp.parry;
+          remoteInput.launch=remoteInput.launch||!!inp.launch;
+          remoteInput.power1=remoteInput.power1||!!inp.power1;
+          remoteInput.power2=remoteInput.power2||!!inp.power2;
+          remoteInput.rage=remoteInput.rage||!!inp.rage;
         }
       };
       MP.onError = (msg) => {

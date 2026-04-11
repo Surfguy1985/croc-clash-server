@@ -234,6 +234,16 @@ function handleMessage(ws, msg) {
     return;
   }
 
+  // ── loadout — relay loadout selection to opponent ──
+  if (t === 'loadout') {
+    if (!ws.roomCode) return;
+    const room = rooms.get(ws.roomCode);
+    if (!room) return;
+    const other = ws.playerNum === 1 ? room.p2 : room.p1;
+    send(other, { t: 'loadout', lo: msg.lo, from: ws.playerNum });
+    return;
+  }
+
   // ── rematch — either player requests rematch ──
   if (t === 'rematch') {
     if (!ws.roomCode) return;

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"/>
   <title>CROC CLASH V8.0 — Branson Pillow Brawl</title>
   <script src="https://connect.tiktok-minis.com/game/sdk.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -10,6 +10,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    /* Prevent ALL zoom — double-tap, pinch, click outside buttons */
+    html{touch-action:manipulation;-ms-touch-action:manipulation;-webkit-text-size-adjust:100%}
+    *{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     :root{
       --fd:'Fredoka',sans-serif;
       --fb:'Space Grotesk',sans-serif;
@@ -117,6 +120,15 @@
       object-fit:cover;display:none;background:#000;
       animation:vidIn .2s ease;
     }
+    /* Hide native play button / controls on all browsers */
+    #special-video::-webkit-media-controls,
+    #special-video::-webkit-media-controls-enclosure,
+    #special-video::-webkit-media-controls-start-playback-button,
+    #special-video::-webkit-media-controls-panel{
+      display:none !important;-webkit-appearance:none !important;
+    }
+    #special-video::-moz-media-controls{display:none !important;}
+    video::-webkit-media-controls-overlay-play-button{display:none !important;}
     @keyframes vidIn{from{opacity:0;transform:scale(1.05)}to{opacity:1;transform:scale(1)}}
 
     /* ══════ RESULT ══════ */
@@ -295,8 +307,8 @@
 <body>
   <canvas id="gc"></canvas>
 
-  <!-- Special move video overlay (click/tap to skip) -->
-  <video id="special-video" playsinline muted></video>
+  <!-- Special move video overlay — autoplay, no controls, embedded look -->
+  <video id="special-video" playsinline muted autoplay preload="auto" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback"></video>
 
   <!-- ══════ TITLE SCREEN ══════ -->
   <div id="title-screen">
@@ -483,6 +495,20 @@
   </div>
 
   <script>window.CROC_SERVER = 'https://web-production-66a24.up.railway.app';</script>
+  <!-- Block pinch-zoom and double-tap zoom globally -->
+  <script>
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('gestureend', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('touchmove', function(e){ if(e.touches.length>1) e.preventDefault(); }, {passive:false});
+  // Block double-tap zoom on iOS
+  let lastTouchEnd=0;
+  document.addEventListener('touchend', function(e){
+    const now=Date.now();
+    if(now-lastTouchEnd<300){ e.preventDefault(); }
+    lastTouchEnd=now;
+  }, {passive:false});
+  </script>
   <script src="tiktok-sdk.js"></script>
   <script src="multiplayer.js"></script>
   <script src="game.js"></script>
