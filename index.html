@@ -457,12 +457,15 @@
       <div id="lobby-waiting" style="display:none;text-align:center">
         <div style="font-family:var(--fd);font-size:14px;color:var(--p1);margin-bottom:8px">Waiting for opponent…</div>
         <div class="lobby-dots" style="font-size:24px;color:var(--acc)">⏳</div>
+        <button class="btn btn-primary" id="lobby-share" style="margin-top:12px;font-size:13px;padding:12px 32px">📲 SEND INVITE LINK</button>
+        <div id="lobby-copied" style="font-family:var(--fd);font-size:12px;color:var(--p1);margin-top:6px;min-height:16px"></div>
       </div>
       <div id="lobby-error" style="font-family:var(--fd);font-size:13px;color:#f87171;text-align:center;min-height:16px"></div>
       <button class="btn" id="lobby-back" style="font-size:12px;padding:10px 28px">← BACK</button>
     </div>
   </div>
 
+  <script>window.CROC_SERVER = 'https://web-production-66a24.up.railway.app';</script>
   <script src="tiktok-sdk.js"></script>
   <script src="multiplayer.js"></script>
   <script src="game.js"></script>

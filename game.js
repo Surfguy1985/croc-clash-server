@@ -2607,8 +2607,30 @@ $('lobby-code-input').addEventListener('keydown',(e)=>{
 $('lobby-back').addEventListener('click',()=>{
   if(typeof MP!=='undefined') MP.disconnect();
   isOnline=false;
+  // Clean room code from URL
+  if(window.history.replaceState) window.history.replaceState({}, '', location.pathname);
   $('online-lobby').classList.add('hidden');
   $('title-screen').classList.remove('hidden');
+});
+
+// Share invite link
+$('lobby-share').addEventListener('click',()=>{
+  const code = $('lobby-room-code')?.textContent?.trim();
+  if(!code) return;
+  const url = location.origin + location.pathname + '?room=' + code;
+  // Try native share first (mobile), fall back to clipboard
+  if(navigator.share){
+    navigator.share({ title:'Croc Clash — Join My Game!', text:'Join my Croc Clash match! Room: '+code, url }).catch(()=>{});
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(url).then(()=>{
+      $('lobby-copied').textContent = '\u2705 Link copied! Send it to your friend.';
+      setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
+    }).catch(()=>{
+      prompt('Copy this link:', url);
+    });
+  } else {
+    prompt('Copy this link:', url);
+  }
 });
 
 // ─── MAIN LOOP ───
@@ -2684,6 +2706,25 @@ loadImages(()=>{
     TT.login(()=>{ TT.startEntranceMission(); TT.addShortcut(); });
   }
   requestAnimationFrame(gameLoop);
+
+  // Auto-join if ?room=XXXX in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const autoRoom = urlParams.get('room');
+  if(autoRoom && autoRoom.length === 4){
+    initAudio();
+    showOnlineLobby();
+    // Wait for WebSocket connection, then auto-join
+    const tryJoin = () => {
+      if(typeof MP !== 'undefined' && MP.isConnected()){
+        MP.joinRoom(autoRoom.toUpperCase());
+        // Clean URL
+        if(window.history.replaceState) window.history.replaceState({}, '', location.pathname);
+      } else {
+        setTimeout(tryJoin, 500);
+      }
+    };
+    setTimeout(tryJoin, 1200);
+  }
 });
 
 })();
