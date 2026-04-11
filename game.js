@@ -14,7 +14,7 @@ const ROUND_TIME = 45, ROUNDS_TO_WIN = 2;
 
 // ─── FIGHTERS (triple size) ───
 const CW = 280, CH = 400;
-const MOVE_SPD = 220, GRAVITY = 220, JUMP_VEL = -1300;
+const MOVE_SPD = 220, GRAVITY = 320, JUMP_VEL = -920;
 const ATK_RANGE = 200, ATK_CD = 0.35;
 const DASH_SPD = 580, DASH_DUR = 0.18, DASH_CD = 0.7;
 const TAIL_RANGE = 240, TAIL_CD = 1.4;
