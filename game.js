@@ -3125,10 +3125,11 @@ function endMatch(){
 
   // Play alternating winner cinematic finishing video (locked = unskippable)
   playSpecialVideo(getKOVideo(w), 10500, true);
-  // Victory finisher slam
-  setTimeout(() => { slam(finisher, wc, 2); }, 1500);
-  // Show result screen after a short delay so video plays first
-  setTimeout(() => { $('result-screen').classList.remove('hidden'); }, 800);
+  // Wait for the KO video to finish before showing anything
+  // Video is 10.5s — show result screen after it completes
+  const videoDelay = 11000;
+  setTimeout(() => { slam(finisher, wc, 2); }, videoDelay);
+  setTimeout(() => { $('result-screen').classList.remove('hidden'); }, videoDelay + 500);
 
   // Win tracking + ELO + Battle Pass + Streak rewards
   const winner = isAI ? (w===p1?'p1':'ai') : (w===p1?'p1':'p2');
@@ -3145,14 +3146,14 @@ function endMatch(){
     if(streak >= 7 && !unlockedArenas.includes('rooftop')) unlockedArenas.push('rooftop');
     // Streak reward notification
     const sr = STREAK_REWARDS.find(s => s.streak === streak);
-    if(sr) setTimeout(()=> slam(sr.icon + ' ' + sr.reward, '#ffd740', 2.5), 3000);
+    if(sr) setTimeout(()=> slam(sr.icon + ' ' + sr.reward, '#ffd740', 2.5), videoDelay + 2000);
     // Perfect round daily challenge
     if(w.hp >= MAX_HP) _dailyPerfect = true;
     // Check daily challenge completion
     if(dailyChallenge && !dailyChallengeComplete && dailyChallenge.check()){
       dailyChallengeComplete = true;
       addBPXP(200); // bonus XP for daily
-      setTimeout(()=> slam('✅ DAILY CHALLENGE COMPLETE! +200 XP', '#4ade80', 2.5), 4000);
+      setTimeout(()=> slam('✅ DAILY CHALLENGE COMPLETE! +200 XP', '#4ade80', 2.5), videoDelay + 3000);
     }
     $('res-streak').innerHTML=`🔥 ${streak} WIN STREAK  |  ${wins} TOTAL WINS<br><span style="font-size:13px;color:#4ade80">+${eloDelta} ELO  |  +${xpGain} XP  |  TIER ${bpTier}/10</span>`;
     $('res-streak').style.display='block';
