@@ -1,5 +1,5 @@
 // Croc Clash Service Worker — PWA Offline Support
-const CACHE_NAME = 'croc-clash-v9.3';
+const CACHE_NAME = 'croc-clash-v9.5';
 
 // Core assets cached on install (everything needed to play offline)
 const CORE_ASSETS = [
@@ -79,7 +79,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: cache-first for local assets, network-first for external
+// Fetch: network-first for HTML, cache-first for assets
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -89,24 +89,30 @@ self.addEventListener('fetch', (event) => {
       !url.hostname.includes('fonts.googleapis.com') &&
       !url.hostname.includes('fonts.gstatic.com')) return;
 
+  // Navigation requests (HTML pages): always try network first
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // All other assets: cache-first, fallback to network
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
-
       return fetch(event.request).then((response) => {
-        // Cache successful responses for local assets
         if (response.ok && url.origin === self.location.origin) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, clone);
-          });
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => {
-        // Offline fallback for navigation
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
       });
     })
   );

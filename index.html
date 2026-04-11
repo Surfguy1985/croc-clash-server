@@ -353,12 +353,13 @@
         <button class="btn btn-primary" id="btn-pvp">🐊 2 Player 🐊</button>
         <button class="btn btn-primary" id="btn-ai">🐊 vs AI 🤖</button>
       </div>
+      <button class="btn" id="btn-install" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(168,85,247,.5));padding:14px 28px;margin-top:10px;font-size:1.1rem;letter-spacing:.06em;border:2px solid rgba(168,85,247,.6)">📲 INSTALL APP</button>
       <div class="tkeys">
         <b>P1:</b> WASD move · <b>F</b> smack · <b>G</b> dash · <b>R</b> parry · <b>Q</b> 🎯 launch · <b>1</b> Power 1 · <b>2</b> Power 2<br/>
         <b>P2:</b> Arrows move · <b>L</b> smack · <b>K</b> dash · <b>P</b> parry · <b>O</b> 🎯 launch · <b>7</b> Power 1 · <b>8</b> Power 2<br/>
         <b>T</b> Rage (P1) · <b>0</b> Rage (P2) — 15s cooldown mega bomb
       </div>
-      <div class="tver">V9.1 — ARENA PERCHES</div>
+      <div class="tver">V9.5 — HOME SCREEN APP</div>
     </div>
   </div>
 
@@ -586,6 +587,42 @@
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('sw.js', { scope: './' }).catch(()=>{});
     }
+
+    // PWA Install Button
+    let deferredPrompt = null;
+    const installBtn = document.getElementById('btn-install');
+
+    // Android/Chrome: capture the beforeinstallprompt event
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if(installBtn) installBtn.style.display = 'inline-block';
+    });
+
+    // iOS Safari: show install instructions (no native prompt)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if(isIOS && !isStandalone && installBtn){
+      installBtn.style.display = 'inline-block';
+      installBtn.textContent = '📲 ADD TO HOME SCREEN';
+    }
+
+    if(installBtn) installBtn.addEventListener('click', async () => {
+      if(deferredPrompt){
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if(outcome === 'accepted') installBtn.style.display = 'none';
+        deferredPrompt = null;
+      } else if(isIOS){
+        alert('Tap the Share button (box with arrow) at the bottom of Safari, then tap "Add to Home Screen"');
+      }
+    });
+
+    // Hide button if already installed
+    window.addEventListener('appinstalled', () => {
+      if(installBtn) installBtn.style.display = 'none';
+      deferredPrompt = null;
+    });
   </script>
 </body>
 </html>
