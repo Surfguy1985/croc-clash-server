@@ -28,7 +28,12 @@ const MP = (() => {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
+  // Server URL: set window.CROC_SERVER to override (e.g. Railway URL)
   function getWSUrl() {
+    if (window.CROC_SERVER) {
+      const url = window.CROC_SERVER.replace(/^http/, 'ws');
+      return url.endsWith('/') ? url.slice(0, -1) : url;
+    }
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return proto + '//' + location.host;
   }

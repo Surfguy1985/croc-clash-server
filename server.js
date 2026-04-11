@@ -20,6 +20,12 @@ const MIME = { '.html':'text/html','.js':'text/javascript','.css':'text/css',
 
 // ─── Static file server ──────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
+  // Health check for Railway
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', rooms: rooms.size }));
+    return;
+  }
   // Normalise path, prevent directory traversal
   let urlPath = req.url.split('?')[0];
   if (urlPath === '/') urlPath = '/index.html';
@@ -34,6 +40,8 @@ const httpServer = http.createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': mime,
       'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
       'Cache-Control': 'no-cache',
     });
     res.end(data);
