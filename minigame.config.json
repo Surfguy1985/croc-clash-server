@@ -1,15 +1,28 @@
 {
   "orientation": "HORIZONTAL",
+  "dev": {
+    "clientKey": "aw03b1s28ro7gz75",
+    "name": "Croc Clash",
+    "host": "localhost",
+    "port": 3000,
+    "desc": "Two crocs enter. One leaves with the good pillow. Branson's wildest pillow brawl!",
+    "ppLink": "https://www.perplexity.ai/computer/a/tiktok-battle-game-egqTNE.lSsyHGMo.nL9mfA",
+    "tosLink": "https://www.perplexity.ai/computer/a/tiktok-battle-game-egqTNE.lSsyHGMo.nL9mfA"
+  },
   "navbar": {
     "bgColorLight": "#0a0a14",
     "bgColorDark": "#0a0a14"
   },
-  "dev": {
-    "host": "localhost",
-    "port": 3000
-  },
   "build": {
     "outputDir": ".",
     "htmlEntry": "index.html"
+  },
+  "domain": {
+    "trustedDomains": [
+      "https://web-production-66a24.up.railway.app",
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com",
+      "https://connect.tiktok-minis.com"
+    ]
   }
 }

@@ -1,0 +1,263 @@
+{
+  "name": "minigame.manifest.json",
+  "resource_list": [
+    {
+      "type": "file",
+      "name": "arena-bg.png"
+    },
+    {
+      "type": "folder",
+      "name": "audio",
+      "children": [
+        {
+          "type": "file",
+          "name": "narr-carl_wins.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-combo10.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-combo5.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-comeback.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-fight.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-gary_wins.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-hit1.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-ko.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-parry.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-perfect.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-round1.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-round2.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-round3.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-tailwhip.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-tornado.mp3"
+        },
+        {
+          "type": "file",
+          "name": "narr-welcome.mp3"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "name": "carl-closeup.png"
+    },
+    {
+      "type": "file",
+      "name": "carl-sprite-lg.png"
+    },
+    {
+      "type": "file",
+      "name": "carl-sprite.png"
+    },
+    {
+      "type": "file",
+      "name": "carl-swing-1.png"
+    },
+    {
+      "type": "file",
+      "name": "carl-swing-2.png"
+    },
+    {
+      "type": "file",
+      "name": "carl-swing-3.png"
+    },
+    {
+      "type": "file",
+      "name": "game.js"
+    },
+    {
+      "type": "file",
+      "name": "gary-closeup.png"
+    },
+    {
+      "type": "file",
+      "name": "gary-sprite-lg.png"
+    },
+    {
+      "type": "file",
+      "name": "gary-sprite.png"
+    },
+    {
+      "type": "file",
+      "name": "gary-swing-1.png"
+    },
+    {
+      "type": "file",
+      "name": "gary-swing-2.png"
+    },
+    {
+      "type": "file",
+      "name": "gary-swing-3.png"
+    },
+    {
+      "type": "file",
+      "name": "index.html"
+    },
+    {
+      "type": "file",
+      "name": "minigame.config.json"
+    },
+    {
+      "type": "file",
+      "name": "multiplayer.js"
+    },
+    {
+      "type": "file",
+      "name": "package.json"
+    },
+    {
+      "type": "file",
+      "name": "poster-tall.png"
+    },
+    {
+      "type": "file",
+      "name": "poster.png"
+    },
+    {
+      "type": "folder",
+      "name": "skins",
+      "children": [
+        {
+          "type": "file",
+          "name": "carl-cowboy.png"
+        },
+        {
+          "type": "file",
+          "name": "carl-golden.png"
+        },
+        {
+          "type": "file",
+          "name": "carl-neon.png"
+        },
+        {
+          "type": "file",
+          "name": "carl-zombie.png"
+        },
+        {
+          "type": "file",
+          "name": "gary-cowboy.png"
+        },
+        {
+          "type": "file",
+          "name": "gary-golden.png"
+        },
+        {
+          "type": "file",
+          "name": "gary-neon.png"
+        },
+        {
+          "type": "file",
+          "name": "gary-zombie.png"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "name": "tiktok-sdk.js"
+    },
+    {
+      "type": "folder",
+      "name": "video",
+      "children": [
+        {
+          "type": "file",
+          "name": "ko-carl-wins-2.mp4"
+        },
+        {
+          "type": "file",
+          "name": "ko-carl-wins.mp4"
+        },
+        {
+          "type": "file",
+          "name": "ko-gary-wins-2.mp4"
+        },
+        {
+          "type": "file",
+          "name": "ko-gary-wins.mp4"
+        },
+        {
+          "type": "file",
+          "name": "match-intro.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-bounce.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-freeze.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-ko.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-lightning.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-mystery.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-parry.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-pillow-launch.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-saxophone.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-tail-whip.mp4"
+        },
+        {
+          "type": "file",
+          "name": "special-tornado.mp4"
+        }
+      ]
+    }
+  ]
+}

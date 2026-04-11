@@ -671,15 +671,13 @@ function loadNarration(){
 function playNarr(el){ if(!el) return; try{ el.currentTime=0; el.play().catch(()=>{}); }catch(e){} }
 
 // ─── VIDEO OVERLAY ───
-// ─── VIDEO SYSTEM v3 — Preloaded Pool, Rotation, Cooldown, Smooth Fade ───
+// ─── VIDEO SYSTEM v4 — Blob-Preloaded, Instant Playback, Zero-Glitch ───
 let videoPlaying = false, videoLocked = false, videoEl = null, videoTimeout = null;
-let videoCooldown = 0; // seconds remaining before next non-locked video can play
-const VIDEO_COOLDOWN_SEC = 3.5; // minimum gap between mid-round videos
-// Dual-video crossfade system: eliminates black flash by keeping old frame visible during transition
-let videoElB = null; // second video element for crossfade
-let activeVidSlot = 'A'; // which slot is currently playing
+let videoCooldown = 0;
+const VIDEO_COOLDOWN_SEC = 3.5;
+let videoElB = null;
+let activeVidSlot = 'A';
 
-// All special video sources grouped by action category
 const VID_POOL = {
   ko_gary:   ['video/ko-gary-wins.mp4','video/ko-gary-wins-2.mp4'],
   ko_carl:   ['video/ko-carl-wins.mp4','video/ko-carl-wins-2.mp4'],
@@ -700,7 +698,6 @@ const VID_POOL = {
   combo:     ['video/special-bounce.mp4','video/special-ko.mp4'],
   match_intro: ['video/match-intro.mp4'],
 };
-// Track last-played index per category for rotation
 const vidLastIdx = {};
 function getRotatedVid(category){
   const pool = VID_POOL[category];
@@ -712,18 +709,53 @@ function getRotatedVid(category){
   return pool[idx];
 }
 
-// Preload all unique video sources into browser cache
-const preloadedVideos = new Set();
-function preloadAllVideos(){
+// ── Blob preload system: fetch every video into memory at boot ──
+// Maps original src → blob URL for instant playback
+const videoBlobCache = new Map();
+let videoPreloadDone = false;
+let videoPreloadCount = 0;
+let videoPreloadTotal = 0;
+
+function getVideoBlob(src){
+  return videoBlobCache.get(src) || src; // fallback to network if not cached yet
+}
+
+async function preloadAllVideos(){
   const allSrcs = new Set();
   Object.values(VID_POOL).forEach(arr => arr.forEach(s => allSrcs.add(s)));
-  allSrcs.forEach(src => {
-    if(preloadedVideos.has(src)) return;
-    preloadedVideos.add(src);
-    const v = document.createElement('video');
-    v.preload = 'auto'; v.muted = true; v.playsInline = true;
-    v.src = src; v.load(); // triggers browser to buffer the file
-  });
+  videoPreloadTotal = allSrcs.size;
+  videoPreloadCount = 0;
+
+  // Fetch all in parallel with concurrency limit of 4
+  const srcs = [...allSrcs];
+  const BATCH = 4;
+  for(let i = 0; i < srcs.length; i += BATCH){
+    const batch = srcs.slice(i, i + BATCH);
+    await Promise.all(batch.map(async src => {
+      try {
+        const resp = await fetch(src);
+        if(!resp.ok) throw new Error(resp.status);
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        videoBlobCache.set(src, blobUrl);
+        // Prime a hidden video element to decode first frames
+        const primer = document.createElement('video');
+        primer.muted = true; primer.playsInline = true; primer.preload = 'auto';
+        primer.src = blobUrl;
+        primer.load();
+        // Wait for enough data to play
+        await new Promise(r => {
+          primer.addEventListener('canplaythrough', r, {once:true});
+          setTimeout(r, 3000); // don't block forever
+        });
+      } catch(e){
+        console.warn('Video preload failed:', src, e);
+      }
+      videoPreloadCount++;
+    }));
+  }
+  videoPreloadDone = true;
+  console.log(`Video preload complete: ${videoBlobCache.size}/${videoPreloadTotal} cached`);
 }
 
 function getKOVideo(winner){
@@ -749,10 +781,36 @@ function initVideoOverlay(){
   videoElB.removeAttribute('src');
   videoEl.parentNode.insertBefore(videoElB, videoEl.nextSibling);
   initVideoEl(videoElB);
-  setTimeout(preloadAllVideos, 2000);
+  // Start blob preloading immediately
+  preloadAllVideos();
 }
 
-// category: key in VID_POOL; duration in ms; locked = unskippable
+// Bulletproof play helper: resolves src through blob cache, retries once
+async function safePlay(el, src){
+  const blobSrc = getVideoBlob(src);
+  el.muted = true; el.volume = 0; el.playsInline = true;
+  // Only change src if different (avoids reload stall)
+  if(!el.src || !el.src.startsWith('blob:') || el.getAttribute('data-orig-src') !== src){
+    el.src = blobSrc;
+    el.setAttribute('data-orig-src', src);
+  }
+  el.currentTime = 0;
+  try {
+    await el.play();
+  } catch(e1){
+    // Retry once after a microtask (handles autoplay policy edge cases)
+    try {
+      el.muted = true;
+      await new Promise(r => setTimeout(r, 50));
+      await el.play();
+    } catch(e2){
+      console.warn('Video play failed after retry:', src, e2.message);
+      return false;
+    }
+  }
+  return true;
+}
+
 function playSpecialVideo(category, duration, locked){
   duration = duration || 2000;
   if(!videoEl || !videoElB) return;
@@ -762,32 +820,23 @@ function playSpecialVideo(category, duration, locked){
   if(!src) return;
   const incoming = (activeVidSlot === 'A') ? videoElB : videoEl;
   const outgoing = (activeVidSlot === 'A') ? videoEl : videoElB;
-  if(videoPlaying && !locked && outgoing.src && outgoing.src.endsWith(src)) return;
+  if(videoPlaying && !locked && outgoing.getAttribute('data-orig-src') === src) return;
   videoLocked = !!locked;
   if(!locked) videoCooldown = VIDEO_COOLDOWN_SEC;
-  incoming.muted = true; incoming.volume = 0; incoming.playsInline = true;
   incoming.style.opacity = '0';
   incoming.style.display = 'block';
   incoming.style.pointerEvents = locked ? 'none' : 'auto';
-  incoming.src = src;
-  incoming.currentTime = 0;
-  const playPromise = incoming.play();
-  if(playPromise){
-    playPromise.then(() => {
-      incoming.muted = true; incoming.volume = 0;
-      incoming.style.opacity = '1';
-      if(videoPlaying && outgoing.style.display !== 'none'){
-        outgoing.style.opacity = '0';
-        setTimeout(() => { outgoing.pause(); outgoing.style.display = 'none'; }, 180);
-      }
-    }).catch(() => { incoming.style.display = 'none'; });
-  } else {
+
+  safePlay(incoming, src).then(ok => {
+    if(!ok){ incoming.style.display = 'none'; return; }
     incoming.style.opacity = '1';
+    // Crossfade out old video
     if(videoPlaying && outgoing.style.display !== 'none'){
       outgoing.style.opacity = '0';
       setTimeout(() => { outgoing.pause(); outgoing.style.display = 'none'; }, 180);
     }
-  }
+  });
+
   activeVidSlot = (activeVidSlot === 'A') ? 'B' : 'A';
   videoPlaying = true;
   if(videoTimeout) clearTimeout(videoTimeout);
@@ -796,7 +845,7 @@ function playSpecialVideo(category, duration, locked){
 
 function hideVideo(){
   if(!videoEl) return;
-  if(matchIntroPlaying) return; // Don't interrupt match intro
+  if(matchIntroPlaying) return;
   videoEl.style.opacity = '0';
   if(videoElB) videoElB.style.opacity = '0';
   setTimeout(() => {
@@ -3837,10 +3886,14 @@ $('lobby-share').addEventListener('click',()=>{
   const code = $('lobby-room-code')?.textContent?.trim();
   if(!code) return;
   const url = location.origin + location.pathname + '?room=' + code;
-  // Try native share first (mobile), fall back to clipboard
-  if(navigator.share){
+  // Try TikTok share first, then native share, then clipboard
+  if(typeof TT !== 'undefined' && TT.isInTikTok()){
+    TT.shareGame('Join my Croc Clash match! Room: '+code);
+    $('lobby-copied').textContent = '\u2705 Shared!';
+    setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
+  } else if(navigator.share){
     navigator.share({ title:'Croc Clash — Join My Game!', text:'Join my Croc Clash match! Room: '+code, url }).catch(()=>{});
-  } else if(navigator.clipboard){
+  } else if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard){
     navigator.clipboard.writeText(url).then(()=>{
       $('lobby-copied').textContent = '\u2705 Link copied! Send it to your friend.';
       setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
@@ -3934,17 +3987,16 @@ document.getElementById('share-close')?.addEventListener('click', () => { const 
 document.getElementById('btn-share-clip')?.addEventListener('click', showShareScreen);
 document.getElementById('share-copy')?.addEventListener('click', () => {
   const url = window.location.origin + window.location.pathname + '?challenge=1';
-  if(navigator.clipboard) navigator.clipboard.writeText('🐊 I just dominated in CROC CLASH! Can you beat my streak? ' + url);
+  if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard) navigator.clipboard.writeText('🐊 I just dominated in CROC CLASH! Can you beat my streak? ' + url);
 });
 document.getElementById('share-tiktok')?.addEventListener('click', () => {
   // TikTok Mini Games sharing API
-  if(typeof TT !== 'undefined' && TT.shareToStory){
-    const c = document.getElementById('ko-clip-canvas');
-    TT.shareToStory({ title:'🐊 CROC CLASH K.O.!', desc: koClipData ? koClipData.winner + ' WINS!' : 'Epic battle!', imageUrl: c.toDataURL() });
+  if(typeof TT !== 'undefined' && TT.isInTikTok()){
+    TT.shareGame('🐊 CROC CLASH K.O.! ' + (koClipData ? koClipData.winner + ' WINS!' : 'Epic battle!'));
   } else {
     // Fallback: copy link
     const url = window.location.origin + window.location.pathname + '?challenge=1';
-    if(navigator.clipboard) navigator.clipboard.writeText('🐊 CROC CLASH K.O.! ' + url);
+    if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard) navigator.clipboard.writeText('🐊 CROC CLASH K.O.! ' + url);
     alert('Link copied! Share it on TikTok.');
   }
 });
@@ -4072,9 +4124,12 @@ loadImages(()=>{
   // TikTok Mini Games SDK init
   if(typeof TT !== 'undefined'){
     TT.init();
+    TT.setLoadingProgress(0.8); // assets loaded, almost ready
     TT.login(()=>{ TT.startEntranceMission(); TT.addShortcut(); });
   }
   requestAnimationFrame(gameLoop);
+  // Signal TikTok that game is fully loaded and ready
+  if(typeof TT !== 'undefined') TT.setLoadingProgress(1);
 
   // Auto-join if ?room=XXXX in URL (P2 opened invite link)
   const urlParams = new URLSearchParams(window.location.search);
