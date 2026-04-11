@@ -328,6 +328,17 @@
       #touch-controls .abtn{width:56px;height:50px}
       #touch-controls .abtn .icon{font-size:18px}
     }
+    /* ══ Controls Settings ══ */
+    #controls-screen.hidden{display:none!important}
+    .bind-section{background:rgba(255,255,255,.04);border-radius:10px;padding:14px 16px;border:1px solid rgba(255,255,255,.06)}
+    .bind-section h3{font-family:var(--fh);font-size:1rem;letter-spacing:.06em;margin:0 0 10px;text-align:center}
+    .bind-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+    .bind-row:last-child{border-bottom:none}
+    .bind-label{font-size:.82rem;color:rgba(255,255,255,.7);font-family:var(--fh);letter-spacing:.04em}
+    .bind-key{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px 12px;font-family:var(--fh);font-size:.85rem;color:#fff;cursor:pointer;min-width:48px;text-align:center;transition:all .15s}
+    .bind-key:hover{background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.4)}
+    .bind-key.listening{background:rgba(251,191,36,.25);border-color:#fbbf24;color:#fbbf24;animation:blink-bind .6s ease infinite alternate}
+    @keyframes blink-bind{from{opacity:1}to{opacity:.5}}
   </style>
 </head>
 <body>
@@ -354,11 +365,8 @@
         <button class="btn btn-primary" id="btn-ai">🐊 vs AI 🤖</button>
       </div>
       <button class="btn" id="btn-install" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(168,85,247,.5));padding:14px 28px;margin-top:10px;font-size:1.1rem;letter-spacing:.06em;border:2px solid rgba(168,85,247,.6)">📲 INSTALL APP</button>
-      <div class="tkeys">
-        <b>P1:</b> WASD move · <b>F</b> smack · <b>G</b> dash · <b>R</b> parry · <b>Q</b> 🎯 launch · <b>1</b> Power 1 · <b>2</b> Power 2<br/>
-        <b>P2:</b> Arrows move · <b>L</b> smack · <b>K</b> dash · <b>P</b> parry · <b>O</b> 🎯 launch · <b>7</b> Power 1 · <b>8</b> Power 2<br/>
-        <b>T</b> Rage (P1) · <b>0</b> Rage (P2) — 15s cooldown mega bomb
-      </div>
+      <div class="tkeys" id="controls-display"></div>
+      <button class="btn" id="btn-controls" style="background:linear-gradient(135deg,rgba(59,130,246,.35),rgba(99,102,241,.45));padding:10px 22px;margin-top:6px;font-size:.85rem;letter-spacing:.06em;border:2px solid rgba(99,102,241,.5)">🎮 CUSTOMIZE CONTROLS</button>
       <div class="tver">V9.5 — HOME SCREEN APP</div>
     </div>
   </div>
@@ -579,6 +587,17 @@
     lastTouchEnd=now;
   }, {passive:false});
   </script>
+  <!-- ══════ CONTROLS SETTINGS SCREEN ══════ -->
+  <div id="controls-screen" class="hidden" style="position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(6,6,14,.95);backdrop-filter:blur(8px);overflow-y:auto">
+    <div style="position:relative;max-width:700px;width:95%;padding:24px 20px;margin:20px auto">
+      <h2 style="text-align:center;font-family:var(--fh);font-size:1.6rem;color:#fbbf24;letter-spacing:.08em;margin-bottom:18px">🎮 CUSTOMIZE CONTROLS</h2>
+      <div id="binds-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px"></div>
+      <div style="display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap">
+        <button class="btn" id="btn-reset-binds" style="background:rgba(239,68,68,.3);border:1px solid rgba(239,68,68,.5);padding:10px 20px;font-size:.85rem">RESET DEFAULTS</button>
+        <button class="btn btn-primary" id="btn-close-controls" style="padding:10px 24px;font-size:.9rem">DONE</button>
+      </div>
+    </div>
+  </div>
   <script src="tiktok-sdk.js"></script>
   <script src="multiplayer.js"></script>
   <script src="game.js"></script>

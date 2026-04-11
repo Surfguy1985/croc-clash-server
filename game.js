@@ -874,21 +874,74 @@ let W, H, sc, ox, oy;
 function resize(){ W=innerWidth; H=innerHeight; canvas.width=W; canvas.height=H; sc=Math.min(W/AW, H/AH); ox=(W-AW*sc)/2; oy=(H-AH*sc)/2; }
 addEventListener('resize', resize); resize();
 
+// ─── CUSTOMIZABLE KEY BINDINGS ───
+const DEFAULT_BINDS_P1 = {
+  left:'KeyA', right:'KeyD', up:'KeyW', down:'KeyS',
+  attack:'KeyF', dash:'KeyG', parry:'KeyR',
+  launch:'KeyQ', power1:'Digit1', power2:'Digit2', rage:'KeyT'
+};
+const DEFAULT_BINDS_P2 = {
+  left:'ArrowLeft', right:'ArrowRight', up:'ArrowUp', down:'ArrowDown',
+  attack:'KeyL', dash:'KeyK', parry:'KeyP',
+  launch:'KeyO', power1:'Digit7', power2:'Digit8', rage:'Digit0'
+};
+const ACTION_LABELS = {
+  left:'Move Left', right:'Move Right', up:'Jump', down:'Crouch/Down',
+  attack:'Smack', dash:'Dash', parry:'Parry',
+  launch:'Launch 🎯', power1:'Power 1', power2:'Power 2', rage:'Rage'
+};
+function loadBindings(){
+  try {
+    const s = localStorage.getItem('croc_keybinds');
+    if(s){ const d = JSON.parse(s); return { p1:{...DEFAULT_BINDS_P1,...d.p1}, p2:{...DEFAULT_BINDS_P2,...d.p2} }; }
+  } catch(e){}
+  return { p1:{...DEFAULT_BINDS_P1}, p2:{...DEFAULT_BINDS_P2} };
+}
+function saveBindings(){ localStorage.setItem('croc_keybinds', JSON.stringify(keyBinds)); }
+let keyBinds = loadBindings();
+
+function codeToLabel(code){
+  if(!code) return '?';
+  if(code.startsWith('Key')) return code.slice(3);
+  if(code.startsWith('Digit')) return code.slice(5);
+  if(code==='ArrowUp') return '↑';
+  if(code==='ArrowDown') return '↓';
+  if(code==='ArrowLeft') return '←';
+  if(code==='ArrowRight') return '→';
+  if(code==='Space') return 'SPACE';
+  if(code==='ShiftLeft'||code==='ShiftRight') return 'SHIFT';
+  if(code==='ControlLeft'||code==='ControlRight') return 'CTRL';
+  if(code==='AltLeft'||code==='AltRight') return 'ALT';
+  if(code==='Backquote') return '`';
+  if(code==='Minus') return '-';
+  if(code==='Equal') return '=';
+  if(code==='BracketLeft') return '[';
+  if(code==='BracketRight') return ']';
+  if(code==='Backslash') return '\\';
+  if(code==='Semicolon') return ';';
+  if(code==='Quote') return "'";
+  if(code==='Comma') return ',';
+  if(code==='Period') return '.';
+  if(code==='Slash') return '/';
+  return code;
+}
+
 // ─── INPUT ───
 const keys = {}, jp = {};
 document.addEventListener('keydown', e => {
   if(!keys[e.code]) jp[e.code]=true; keys[e.code]=true; e.preventDefault();
   // Buffer one-shot actions for online guest (so they're not lost between frames)
   if(typeof guestInputBuf!=='undefined'){
-    if(e.code==='KeyW') guestInputBuf.up=true;
-    if(e.code==='KeyS') guestInputBuf.down=true;
-    if(e.code==='KeyF') guestInputBuf.attack=true;
-    if(e.code==='KeyG') guestInputBuf.dash=true;
-    if(e.code==='KeyR') guestInputBuf.parry=true;
-    if(e.code==='KeyQ') guestInputBuf.launch=true;
-    if(e.code==='Digit1') guestInputBuf.power1=true;
-    if(e.code==='Digit2') guestInputBuf.power2=true;
-    if(e.code==='KeyT') guestInputBuf.rage=true;
+    const b1 = keyBinds.p1;
+    if(e.code===b1.up) guestInputBuf.up=true;
+    if(e.code===b1.down) guestInputBuf.down=true;
+    if(e.code===b1.attack) guestInputBuf.attack=true;
+    if(e.code===b1.dash) guestInputBuf.dash=true;
+    if(e.code===b1.parry) guestInputBuf.parry=true;
+    if(e.code===b1.launch) guestInputBuf.launch=true;
+    if(e.code===b1.power1) guestInputBuf.power1=true;
+    if(e.code===b1.power2) guestInputBuf.power2=true;
+    if(e.code===b1.rage) guestInputBuf.rage=true;
   }
 });
 document.addEventListener('keyup', e => { keys[e.code]=false; });
@@ -3234,33 +3287,35 @@ function updateHUD(){
 
 // ─── INPUT MAPS ───
 function getLocalP1(){
+  const b = keyBinds.p1;
   return{
-    left:keys.KeyA||ts.left,
-    right:keys.KeyD||ts.right,
-    up:jp.KeyW||ts.up,
-    down:jp.KeyS||ts.down,
-    attack:jp.KeyF||ts.attack,
-    dash:jp.KeyG||ts.dash,
-    parry:jp.KeyR||ts.parry,
-    launch:jp.KeyQ||ts.launch,
-    power1:jp.Digit1||ts.power1,
-    power2:jp.Digit2||ts.power2,
-    rage:jp.KeyT||ts.rage,
+    left:keys[b.left]||ts.left,
+    right:keys[b.right]||ts.right,
+    up:jp[b.up]||ts.up,
+    down:jp[b.down]||ts.down,
+    attack:jp[b.attack]||ts.attack,
+    dash:jp[b.dash]||ts.dash,
+    parry:jp[b.parry]||ts.parry,
+    launch:jp[b.launch]||ts.launch,
+    power1:jp[b.power1]||ts.power1,
+    power2:jp[b.power2]||ts.power2,
+    rage:jp[b.rage]||ts.rage,
   };
 }
 function getLocalP2(){
+  const b = keyBinds.p2;
   return{
-    left:keys.ArrowLeft||ts2.left,
-    right:keys.ArrowRight||ts2.right,
-    up:jp.ArrowUp||ts2.up,
-    down:jp.ArrowDown||ts2.down,
-    attack:jp.KeyL||ts2.attack,
-    dash:jp.KeyK||ts2.dash,
-    parry:jp.KeyP||ts2.parry,
-    launch:jp.KeyO||ts2.launch,
-    power1:jp.Digit7||ts2.power1,
-    power2:jp.Digit8||ts2.power2,
-    rage:jp.Digit0||ts2.rage,
+    left:keys[b.left]||ts2.left,
+    right:keys[b.right]||ts2.right,
+    up:jp[b.up]||ts2.up,
+    down:jp[b.down]||ts2.down,
+    attack:jp[b.attack]||ts2.attack,
+    dash:jp[b.dash]||ts2.dash,
+    parry:jp[b.parry]||ts2.parry,
+    launch:jp[b.launch]||ts2.launch,
+    power1:jp[b.power1]||ts2.power1,
+    power2:jp[b.power2]||ts2.power2,
+    rage:jp[b.rage]||ts2.rage,
   };
 }
 function getP1(){
@@ -4148,5 +4203,98 @@ loadImages(()=>{
     }
   }
 });
+
+// ─── CONTROLS CUSTOMIZATION UI ───
+function updateControlsDisplay(){
+  const d = $('controls-display');
+  if(!d) return;
+  const b1 = keyBinds.p1, b2 = keyBinds.p2;
+  d.innerHTML = 
+    `<b>P1:</b> <b>${codeToLabel(b1.left)}</b><b>${codeToLabel(b1.right)}</b><b>${codeToLabel(b1.up)}</b><b>${codeToLabel(b1.down)}</b> move · ` +
+    `<b>${codeToLabel(b1.attack)}</b> smack · <b>${codeToLabel(b1.dash)}</b> dash · <b>${codeToLabel(b1.parry)}</b> parry · ` +
+    `<b>${codeToLabel(b1.launch)}</b> 🎯 launch · <b>${codeToLabel(b1.power1)}</b> Pow1 · <b>${codeToLabel(b1.power2)}</b> Pow2<br/>` +
+    `<b>P2:</b> <b>${codeToLabel(b2.left)}</b><b>${codeToLabel(b2.right)}</b><b>${codeToLabel(b2.up)}</b><b>${codeToLabel(b2.down)}</b> move · ` +
+    `<b>${codeToLabel(b2.attack)}</b> smack · <b>${codeToLabel(b2.dash)}</b> dash · <b>${codeToLabel(b2.parry)}</b> parry · ` +
+    `<b>${codeToLabel(b2.launch)}</b> 🎯 launch · <b>${codeToLabel(b2.power1)}</b> Pow1 · <b>${codeToLabel(b2.power2)}</b> Pow2<br/>` +
+    `<b>${codeToLabel(b1.rage)}</b> Rage (P1) · <b>${codeToLabel(b2.rage)}</b> Rage (P2) — 15s cooldown mega bomb`;
+}
+
+let listeningForBind = null; // { player:'p1'|'p2', action:string, el:HTMLElement }
+
+function renderBindsGrid(){
+  const grid = $('binds-grid');
+  if(!grid) return;
+  grid.innerHTML = '';
+  ['p1','p2'].forEach(player => {
+    const section = document.createElement('div');
+    section.className = 'bind-section';
+    const label = player === 'p1' ? '🐊 GATOR GARY (P1)' : '🐊 CROC CARL (P2)';
+    const color = player === 'p1' ? '#4ade80' : '#f472b6';
+    section.innerHTML = `<h3 style="color:${color}">${label}</h3>`;
+    const actions = Object.keys(ACTION_LABELS);
+    actions.forEach(action => {
+      const row = document.createElement('div');
+      row.className = 'bind-row';
+      const code = keyBinds[player][action];
+      row.innerHTML = `<span class="bind-label">${ACTION_LABELS[action]}</span><span class="bind-key" data-player="${player}" data-action="${action}">${codeToLabel(code)}</span>`;
+      section.appendChild(row);
+    });
+    grid.appendChild(section);
+  });
+  // Attach click listeners to all bind keys
+  grid.querySelectorAll('.bind-key').forEach(el => {
+    el.addEventListener('click', () => startListening(el));
+  });
+}
+
+function startListening(el){
+  // Cancel any previous listener
+  if(listeningForBind && listeningForBind.el){
+    listeningForBind.el.classList.remove('listening');
+    listeningForBind.el.textContent = codeToLabel(keyBinds[listeningForBind.player][listeningForBind.action]);
+  }
+  el.classList.add('listening');
+  el.textContent = 'Press a key...';
+  listeningForBind = { player: el.dataset.player, action: el.dataset.action, el };
+}
+
+// Listen for key presses to rebind
+document.addEventListener('keydown', function bindListener(e){
+  if(!listeningForBind) return;
+  if(e.code === 'Escape'){
+    // Cancel
+    listeningForBind.el.classList.remove('listening');
+    listeningForBind.el.textContent = codeToLabel(keyBinds[listeningForBind.player][listeningForBind.action]);
+    listeningForBind = null;
+    return;
+  }
+  e.preventDefault(); e.stopPropagation();
+  const { player, action, el } = listeningForBind;
+  keyBinds[player][action] = e.code;
+  saveBindings();
+  el.classList.remove('listening');
+  el.textContent = codeToLabel(e.code);
+  listeningForBind = null;
+  updateControlsDisplay();
+}, true); // capture phase so it runs before game input
+
+// Open/close controls screen
+$('btn-controls').addEventListener('click', () => {
+  renderBindsGrid();
+  $('controls-screen').classList.remove('hidden');
+});
+$('btn-close-controls').addEventListener('click', () => {
+  $('controls-screen').classList.add('hidden');
+  if(listeningForBind){ listeningForBind.el.classList.remove('listening'); listeningForBind = null; }
+});
+$('btn-reset-binds').addEventListener('click', () => {
+  keyBinds = { p1:{...DEFAULT_BINDS_P1}, p2:{...DEFAULT_BINDS_P2} };
+  saveBindings();
+  renderBindsGrid();
+  updateControlsDisplay();
+});
+
+// Initial render
+updateControlsDisplay();
 
 })();
