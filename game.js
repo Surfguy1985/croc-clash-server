@@ -9,7 +9,7 @@
 // ─── ARENA ───
 const AW = 960, AH = 540;
 const FLOOR_Y = AH - 58;
-const MAX_HP = 6;
+const MAX_HP = 10;
 const ROUND_TIME = 45, ROUNDS_TO_WIN = 2;
 
 // ─── FIGHTERS (triple size) ───
@@ -21,7 +21,7 @@ const TAIL_RANGE = 240, TAIL_CD = 1.4;
 const PARRY_WIN = 0.18, PARRY_CD = 0.55, PARRY_STUN = 0.6;
 const LAUNCH_CD = 1.6, LAUNCH_SPD = 700, PILLOW_SIZE = 56;
 const KB = 280, KB_UP = -160;
-const COMEBACK_TH = 2;
+const COMEBACK_TH = 3;
 
 // Special power cooldowns
 const CD_FREEZE = 8, CD_SAX = 10, CD_LIGHTNING = 12, CD_MYSTERY = 15, CD_TORNADO = 4, CD_TAIL = 1.4;
@@ -939,6 +939,7 @@ function boomerangHit(attacker, victim, dir){
     slowMo(0.3, 0.25);
   }
   slam(`BOOMERANG! -1 HP! (${victim.hp}/${MAX_HP})`, '#a78bfa', 1.2);
+  playSpecialVideo('video/special-bounce.mp4', 1800);
 }
 
 function updateAllProjectiles(dt){
@@ -1182,9 +1183,14 @@ function pillowHit(attacker, victim, dir, isDouble){
     slowMo(0.5, 0.2);
   }
 
+  // Pillow-launch video on every projectile hit
+  playSpecialVideo('video/special-pillow-launch.mp4', 1800);
+
   slam(`-${dmg} HP! (${victim.hp}/${MAX_HP})`, isDouble?'#f472b6':'#ff3d00', 1.2);
   if(COMBO_MS[attacker.combo]){
-    setTimeout(()=>{ slam(COMBO_MS[attacker.combo],'#ffd740',1); sfxCombo(attacker.combo); stars(attacker.x+attacker.w/2,attacker.y,10); }, 400);
+    setTimeout(()=>{ slam(COMBO_MS[attacker.combo],'#ffd740',1); sfxCombo(attacker.combo); stars(attacker.x+attacker.w/2,attacker.y,10);
+      playSpecialVideo('video/special-bounce.mp4', 1800); // combo milestone video
+    }, 400);
   }
 }
 
@@ -1750,8 +1756,12 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
     lightningBolt(vic.x+vic.w/2-50,vic.y-20,vic.x+vic.w/2+50,vic.y+vic.h);
     fText(vic.x+vic.w/2,vic.y-55,pick(PARRY_LINES),'#a78bfa',30);
     vic.parryCount++;chromAb=.4;
+    playSpecialVideo('video/special-parry.mp4', 1800);
     return;
   }
+  // ─── MELEE HP DAMAGE ───
+  const meleeDmg = (heavy||isTail) ? 1 : 1; // every hit does 1 HP damage
+  vic.hp = Math.max(0, vic.hp - meleeDmg);
   vic.hitFlash=.14;
   vic.hitRecoil = dir * 0.35; // Snap hit recoil animation
   const spd = atk.speedBoost>1 ? 1.3 : 1;
@@ -1767,6 +1777,7 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
     shockwave(vic.x+vic.w/2,vic.y+vic.h/2,'rgba(255,200,0,.6)');
     screenFlash('rgba(255,200,0,.2)',.12);chromAb=.35;bloomInt=.45;
     fText(vic.x+vic.w/2,vic.y-55,pick(TAIL_WORDS),'#06b6d4',34,1.2);
+    playSpecialVideo('video/special-tail-whip.mp4', 1800);
   } else if(heavy){
     hitStop(HS_HEAVY);addTrauma(.45);
     feathers(vic.x+vic.w/2,vic.y+vic.h/2,16,'#fff');
@@ -1781,8 +1792,25 @@ function dealMeleeDmg(atk,vic,dir,heavy,isTail){
   }
   sfxHit(atk.combo);
   fText(vic.x+vic.w/2+rand(-22,22),vic.y-12,`${pick(DMG_WORDS)}!`,'#fff',22);
+  // Show HP damage text
+  fText(vic.x+vic.w/2, vic.y-40, `-1 HP (${vic.hp}/${MAX_HP})`, '#ff6b6b', 18, 1.2);
   if(COMBO_MS[atk.combo]){
     slam(COMBO_MS[atk.combo],'#ffd740',1);sfxCombo(atk.combo);stars(atk.x+atk.w/2,atk.y,10);bloomInt=.5;
+    playSpecialVideo('video/special-bounce.mp4', 1800); // combo milestone video
+  }
+  // KO from melee — launch victim into death spin
+  if(vic.hp <= 0){
+    vic.launched = true;
+    vic.launchVy = -600;
+    vic.launchVx = dir * 200;
+    vic.launchSpin = dir * 8;
+    vic.launchRot = 0;
+    vic.launchTimer = 0;
+    vic.launchIsKO = true;
+    vic.grounded = false;
+    slowMo(SLO_DUR+0.5, SLO_SCALE);
+    playNarr(narrKO);
+    bloomInt=1;chromAb=0.6;
   }
 }
 
@@ -1809,9 +1837,11 @@ function useSpecialPower(c, o, powerName){
   } else if(powerName === 'tornado'){
     c.tornadoAct=true;c.tornadoT=0.65;c.tornadoCD=POWERS.tornado.cd;
     sfxSpecial();slam('TORNADO!!',c===p1?'#4ade80':'#f472b6',.8);bloomInt=.4;
+    playSpecialVideo('video/special-tornado.mp4', 2000);
   } else if(powerName === 'tailwhip'){
     c.tailAct=true;c.tailT=.3;c.tailCD=0;sfxTailWhip();
     c.squash=1.35;c.stretch=.65;
+    playSpecialVideo('video/special-tail-whip.mp4', 2000);
     setTimeout(()=>{
       if(!c.alive||!o.alive||o.launched)return;
       const tcx=c.x+c.w/2,tcy=c.y+c.h/2;
@@ -1822,18 +1852,22 @@ function useSpecialPower(c, o, powerName){
     fText(c.x+c.w/2, c.y-60, pick(SHOTGUN_WORDS), '#ffd740', 32, 1.2);
     slam('PILLOW SHOTGUN!!','#ffd740',1);
     bloomInt=0.4;
+    playSpecialVideo('video/special-pillow-launch.mp4', 2000);
   } else if(powerName === 'uppercut'){
     doPillowUppercut(c, o);
     fText(c.x+c.w/2, c.y-60, pick(UPPERCUT_WORDS), '#ff9100', 32, 1.2);
+    playSpecialVideo('video/special-ko.mp4', 2000);
   } else if(powerName === 'boomerang'){
     spawnBoomerangPillow(c, c.face);
     fText(c.x+c.w/2, c.y-60, pick(BOOMERANG_WORDS), '#a78bfa', 32, 1.2);
     slam('BOOMERANG!!','#a78bfa',1);
+    playSpecialVideo('video/special-bounce.mp4', 2000);
   } else if(powerName === 'rapidfire'){
     spawnRapidFirePillows(c, c.face);
     fText(c.x+c.w/2, c.y-60, pick(RAPIDFIRE_WORDS), '#ff6b35', 32, 1.2);
     slam('RAPID FIRE!!','#ff6b35',1);
     bloomInt=0.3;
+    playSpecialVideo('video/special-pillow-launch.mp4', 2000);
   }
 }
 
@@ -1846,6 +1880,7 @@ function megaPillowBomb(attacker, victim){
   screenFlash('rgba(255,100,255,0.6)',0.3);
   slam('MEGA PILLOW BOMB!!','#f472b6',2);
   bloomInt=1;chromAb=0.8;
+  playSpecialVideo('video/special-ko.mp4', 2500);
   // Giant explosion
   feathers(attacker.x+attacker.w/2,attacker.y+attacker.h/2,100,'#fff');
   sparks(attacker.x+attacker.w/2,attacker.y+attacker.h/2,50,'#f472b6');
@@ -1913,6 +1948,7 @@ function updateCroc(c,inp,o,dt){
     addTrauma(0.6);
     screenFlash('rgba(255,0,0,0.3)',0.2);
     vignette('rgba(255,0,0,.4)',0.8);
+    playSpecialVideo('video/special-ko.mp4', 2000);
   }
 
   const rageSpeedMult = (c.hp<=1&&c.alive) ? 1.2 : 1;
