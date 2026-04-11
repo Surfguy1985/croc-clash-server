@@ -767,8 +767,10 @@ function initVideoEl(el){
   el.muted = true; el.volume = 0;
   el.addEventListener('ended', () => { if(!matchIntroPlaying) hideVideo(); });
   el.addEventListener('error', () => { if(!matchIntroPlaying) hideVideo(); });
-  el.addEventListener('click', () => { if(!videoLocked) hideVideo(); });
-  el.addEventListener('touchstart', (e) => { if(!videoLocked){ hideVideo(); } else { e.preventDefault(); } }, {passive:false});
+  // ALL videos are unskippable — no click/tap to dismiss
+  el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+  el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
+  el.addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
   el.addEventListener('play', () => { el.muted = true; el.volume = 0; });
   el.addEventListener('volumechange', () => { if(!el.muted || el.volume > 0){ el.muted = true; el.volume = 0; } });
 }
@@ -821,11 +823,11 @@ function playSpecialVideo(category, duration, locked){
   const incoming = (activeVidSlot === 'A') ? videoElB : videoEl;
   const outgoing = (activeVidSlot === 'A') ? videoEl : videoElB;
   if(videoPlaying && !locked && outgoing.getAttribute('data-orig-src') === src) return;
-  videoLocked = !!locked;
+  videoLocked = true; // all videos are now unskippable
   if(!locked) videoCooldown = VIDEO_COOLDOWN_SEC;
   incoming.style.opacity = '0';
   incoming.style.display = 'block';
-  incoming.style.pointerEvents = locked ? 'none' : 'auto';
+  incoming.style.pointerEvents = 'none'; // all videos unskippable
 
   safePlay(incoming, src).then(ok => {
     if(!ok){ incoming.style.display = 'none'; return; }
@@ -840,7 +842,8 @@ function playSpecialVideo(category, duration, locked){
   activeVidSlot = (activeVidSlot === 'A') ? 'B' : 'A';
   videoPlaying = true;
   if(videoTimeout) clearTimeout(videoTimeout);
-  videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, duration);
+  // Let the 'ended' event handle hide primarily; timeout is safety fallback with extra buffer
+  videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, duration + 3000);
 }
 
 function hideVideo(){
