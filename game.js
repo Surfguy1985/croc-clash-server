@@ -14,7 +14,7 @@ const ROUND_TIME = 45, ROUNDS_TO_WIN = 2;
 
 // ─── FIGHTERS (triple size) ───
 const CW = 280, CH = 400;
-const MOVE_SPD = 220, GRAVITY = 700, JUMP_VEL = -420;
+const MOVE_SPD = 220, GRAVITY = 220, JUMP_VEL = -1300;
 const ATK_RANGE = 200, ATK_CD = 0.35;
 const DASH_SPD = 580, DASH_DUR = 0.18, DASH_CD = 0.7;
 const TAIL_RANGE = 240, TAIL_CD = 1.4;
@@ -58,10 +58,7 @@ let unlockedArenas = ['boardwalk']; // earn others via win streaks
 
 // ─── ARENA PLATFORMS (perch structures — walk past base, jump onto roof) ───
 const ARENA_PLATFORMS = {
-  boardwalk: [
-    // White cabin — centered, crocs walk past the base but can jump on the roof
-    { x: 370, y: FLOOR_Y - 110, w: 220, h: 14, id: 'cabin' }
-  ],
+  boardwalk: [],
   swamp: [
     // Mossy tree stump — left-center area
     { x: 280, y: FLOOR_Y - 100, w: 180, h: 14, id: 'stump' }
@@ -679,8 +676,8 @@ let videoElB = null;
 let activeVidSlot = 'A';
 
 const VID_POOL = {
-  ko_gary:   ['video/ko-gary-wins.mp4','video/ko-gary-wins-2.mp4'],
-  ko_carl:   ['video/ko-carl-wins.mp4','video/ko-carl-wins-2.mp4'],
+  ko_gary:   ['video/ko-gary-wins.mp4','video/ko-gary-wins-2.mp4','video/special-ko.mp4','video/special-lightning.mp4','video/special-freeze.mp4','video/special-saxophone.mp4'],
+  ko_carl:   ['video/ko-carl-wins.mp4','video/ko-carl-wins-2.mp4','video/special-ko.mp4','video/special-lightning.mp4','video/special-mystery.mp4','video/special-tornado.mp4'],
   tornado:   ['video/special-tornado.mp4'],
   tailwhip:  ['video/special-tail-whip.mp4'],
   parry:     ['video/special-parry.mp4'],
@@ -764,15 +761,13 @@ function getKOVideo(winner){
 
 function initVideoEl(el){
   if(!el) return;
-  el.muted = true; el.volume = 0;
+  el.muted = true; el.playsInline = true; // muted for preload only, unmuted on play
   el.addEventListener('ended', () => { if(!matchIntroPlaying) hideVideo(); });
   el.addEventListener('error', () => { if(!matchIntroPlaying) hideVideo(); });
   // All videos play to completion — no tap/click to dismiss
   el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
   el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
   el.addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
-  el.addEventListener('play', () => { el.muted = true; el.volume = 0; });
-  el.addEventListener('volumechange', () => { if(!el.muted || el.volume > 0){ el.muted = true; el.volume = 0; } });
 }
 function initVideoOverlay(){
   videoEl = document.getElementById('special-video');
@@ -787,22 +782,24 @@ function initVideoOverlay(){
   preloadAllVideos();
 }
 
-// Bulletproof play helper: resolves src through blob cache, retries once
+// Bulletproof play helper: resolves src through blob cache, retries with muted fallback
 async function safePlay(el, src){
   const blobSrc = getVideoBlob(src);
-  el.muted = true; el.volume = 0; el.playsInline = true;
+  el.playsInline = true;
   // Only change src if different (avoids reload stall)
   if(!el.src || !el.src.startsWith('blob:') || el.getAttribute('data-orig-src') !== src){
     el.src = blobSrc;
     el.setAttribute('data-orig-src', src);
   }
   el.currentTime = 0;
+  // Try unmuted first (user has interacted, so audio should work)
+  el.muted = false; el.volume = 1;
   try {
     await el.play();
   } catch(e1){
-    // Retry once after a microtask (handles autoplay policy edge cases)
+    // Autoplay blocked with audio — retry muted (better than no video)
     try {
-      el.muted = true;
+      el.muted = true; el.volume = 0;
       await new Promise(r => setTimeout(r, 50));
       await el.play();
     } catch(e2){
@@ -835,7 +832,7 @@ function playSpecialVideo(category, duration, locked){
     // Crossfade out old video
     if(videoPlaying && outgoing.style.display !== 'none'){
       outgoing.style.opacity = '0';
-      setTimeout(() => { outgoing.pause(); outgoing.style.display = 'none'; }, 180);
+      setTimeout(() => { outgoing.pause(); outgoing.style.display = 'none'; }, 400);
     }
   });
 
@@ -855,7 +852,7 @@ function hideVideo(){
     if(matchIntroPlaying) return;
     if(videoEl.style.opacity !== '0') return;
     hideVideoImmediate();
-  }, 180);
+  }, 400); // match CSS transition duration (350ms + buffer)
 }
 
 function hideVideoImmediate(){
@@ -1774,77 +1771,7 @@ function drawArenaBoardwalk(t){
   ctx.fillStyle=fogG;ctx.fillRect(0,FLOOR_Y-50,AW,AH-FLOOR_Y+50);
   ctx.restore();
 
-  // ─── WHITE CABIN PERCH ───
-  const cab = ARENA_PLATFORMS.boardwalk[0];
-  const cabX = cab.x, cabTop = cab.y, cabW = cab.w;
-  const cabH = FLOOR_Y - cabTop; // total height from roof to ground
-  const wallY = cabTop + cab.h; // just below roof
-  ctx.save();
-  // Cabin walls (white wood siding)
-  const wallG = ctx.createLinearGradient(cabX, wallY, cabX, FLOOR_Y);
-  wallG.addColorStop(0, '#f5f0e8'); wallG.addColorStop(1, '#ddd5c8');
-  ctx.fillStyle = wallG;
-  ctx.fillRect(cabX + 15, wallY, cabW - 30, FLOOR_Y - wallY);
-  // Siding lines
-  ctx.strokeStyle = 'rgba(180,170,155,.35)'; ctx.lineWidth = 1;
-  for(let sy = wallY + 18; sy < FLOOR_Y - 5; sy += 18){
-    ctx.beginPath(); ctx.moveTo(cabX + 18, sy); ctx.lineTo(cabX + cabW - 18, sy); ctx.stroke();
-  }
-  // Door
-  const doorW = 32, doorH = 60;
-  const doorX = cabX + cabW/2 - doorW/2;
-  ctx.fillStyle = '#8B6914'; ctx.fillRect(doorX, FLOOR_Y - doorH, doorW, doorH);
-  ctx.fillStyle = '#a07818'; ctx.fillRect(doorX + 2, FLOOR_Y - doorH + 2, doorW - 4, doorH/2 - 2);
-  ctx.fillStyle = '#a07818'; ctx.fillRect(doorX + 2, FLOOR_Y - doorH/2 + 2, doorW - 4, doorH/2 - 4);
-  // Door knob
-  ctx.fillStyle = '#ffd740'; ctx.beginPath(); ctx.arc(doorX + doorW - 8, FLOOR_Y - doorH/2, 3, 0, TAU); ctx.fill();
-  // Window (left)
-  const winW = 28, winH = 24;
-  ctx.fillStyle = 'rgba(100,180,255,.25)'; ctx.fillRect(cabX + 30, wallY + 20, winW, winH);
-  ctx.strokeStyle = '#c8c0b0'; ctx.lineWidth = 2; ctx.strokeRect(cabX + 30, wallY + 20, winW, winH);
-  ctx.beginPath(); ctx.moveTo(cabX + 30 + winW/2, wallY + 20); ctx.lineTo(cabX + 30 + winW/2, wallY + 20 + winH); ctx.stroke();
-  // Window glow
-  ctx.fillStyle = 'rgba(255,220,120,' + (0.08 + Math.sin(t * 0.8) * 0.04) + ')'; ctx.fillRect(cabX + 30, wallY + 20, winW, winH);
-  // Window (right)
-  ctx.fillStyle = 'rgba(100,180,255,.25)'; ctx.fillRect(cabX + cabW - 30 - winW, wallY + 20, winW, winH);
-  ctx.strokeStyle = '#c8c0b0'; ctx.lineWidth = 2; ctx.strokeRect(cabX + cabW - 30 - winW, wallY + 20, winW, winH);
-  ctx.beginPath(); ctx.moveTo(cabX + cabW - 30 - winW/2, wallY + 20); ctx.lineTo(cabX + cabW - 30 - winW/2, wallY + 20 + winH); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,220,120,' + (0.06 + Math.sin(t * 0.8 + 1) * 0.04) + ')'; ctx.fillRect(cabX + cabW - 30 - winW, wallY + 20, winW, winH);
-  // Peaked roof (triangle)
-  const roofOverhang = 20;
-  ctx.fillStyle = '#6B3A2A';
-  ctx.beginPath();
-  ctx.moveTo(cabX - roofOverhang, cabTop + cab.h);
-  ctx.lineTo(cabX + cabW/2, cabTop - 30);
-  ctx.lineTo(cabX + cabW + roofOverhang, cabTop + cab.h);
-  ctx.closePath(); ctx.fill();
-  // Roof shading
-  ctx.fillStyle = 'rgba(0,0,0,.15)';
-  ctx.beginPath();
-  ctx.moveTo(cabX + cabW/2, cabTop - 30);
-  ctx.lineTo(cabX + cabW + roofOverhang, cabTop + cab.h);
-  ctx.lineTo(cabX + cabW/2, cabTop + cab.h);
-  ctx.closePath(); ctx.fill();
-  // Flat landing surface (the actual platform)
-  ctx.fillStyle = '#7B4A3A'; ctx.fillRect(cabX - roofOverhang, cabTop, cabW + roofOverhang*2, cab.h);
-  // Roof edge highlight
-  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(cabX - roofOverhang, cabTop + cab.h); ctx.lineTo(cabX + cabW + roofOverhang, cabTop + cab.h); ctx.stroke();
-  // Little chimney
-  ctx.fillStyle = '#555'; ctx.fillRect(cabX + cabW * 0.7, cabTop - 36, 16, 30);
-  ctx.fillStyle = '#666'; ctx.fillRect(cabX + cabW * 0.7 - 3, cabTop - 40, 22, 6);
-  // Smoke puffs
-  const smokeX = cabX + cabW * 0.7 + 8;
-  for(let si = 0; si < 4; si++){
-    const soy = cabTop - 48 - si * 18 - Math.sin(t * 0.4 + si) * 6;
-    const sox = smokeX + Math.sin(t * 0.3 + si * 1.5) * 10;
-    const sr = 5 + si * 3;
-    ctx.globalAlpha = 0.12 - si * 0.025;
-    ctx.fillStyle = '#ccc';
-    ctx.beginPath(); ctx.arc(sox, soy, sr, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
+
 }
 
 // ─── ARENA: SWAMP MIDNIGHT ───
@@ -3094,15 +3021,25 @@ function playMatchIntro(onDone){
   // Kill any outgoing video
   outgoing.pause(); outgoing.style.display = 'none';
   videoLocked = true; videoPlaying = true;
-  incoming.muted = true; incoming.volume = 0; incoming.playsInline = true;
+  incoming.playsInline = true;
   incoming.classList.remove('intro-fade');
   incoming.style.display = 'block';
   incoming.style.opacity = '1';
   incoming.style.pointerEvents = 'none';
-  incoming.src = src;
+  // Use blob cache for instant playback + try unmuted for audio
+  const blobSrc = getVideoBlob(src);
+  incoming.src = blobSrc;
+  incoming.setAttribute('data-orig-src', src);
   incoming.currentTime = 0;
+  // Try unmuted first for audio, fall back to muted
+  incoming.muted = false; incoming.volume = 1;
   const pp = incoming.play();
-  if(pp) pp.catch(() => { matchIntroPlaying=false; onDone(); });
+  if(pp) pp.catch(() => {
+    // Autoplay blocked with audio — retry muted
+    incoming.muted = true; incoming.volume = 0;
+    const pp2 = incoming.play();
+    if(pp2) pp2.catch(() => { matchIntroPlaying=false; onDone(); });
+  });
   activeVidSlot = (activeVidSlot === 'A') ? 'B' : 'A';
   // Cross-dissolve: start fading at ~8s so the arena bleeds through
   const fadeStart = 7800;
@@ -3163,10 +3100,10 @@ function endRound(w){
   // (the boss KO video in endMatch() handles that instead)
   if(w && !isMatchWin){
     hideVideo();
-    playSpecialVideo(getKOVideo(w), 6000, true);
+    playSpecialVideo(getKOVideo(w), 10500, true);
   }
   // Advance after video (or immediately if match-winning round)
-  const advanceDelay = (w && !isMatchWin) ? 7500 : 2500;
+  const advanceDelay = (w && !isMatchWin) ? 11500 : 2500;
   setTimeout(()=>{ hideVideo(); if(isMatchWin) endMatch(); else { roundNum++; startCD(); } }, advanceDelay);
 }
 function endMatch(){
@@ -3187,7 +3124,7 @@ function endMatch(){
   $('res-grid').innerHTML=`<div><div class="v">${matchStats.p1h}</div><div class="l">Gary Hits</div></div><div><div class="v">${matchStats.p2h}</div><div class="l">Carl Hits</div></div><div><div class="v">${matchStats.p1c}</div><div class="l">Gary Best Combo</div></div><div><div class="v">${matchStats.p2c}</div><div class="l">Carl Best Combo</div></div><div><div class="v">${matchStats.p1p}</div><div class="l">Gary Parries</div></div><div><div class="v">${matchStats.p2p}</div><div class="l">Carl Parries</div></div><div style="grid-column:span 2;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;margin-top:4px"><div class="v" style="font-size:15px">${tier.icon} ${tier.name}</div><div class="l">RANK — ${playerElo} ELO</div></div>${dailyStr}`;
 
   // Play alternating winner cinematic finishing video (locked = unskippable)
-  playSpecialVideo(getKOVideo(w), 7000, true);
+  playSpecialVideo(getKOVideo(w), 10500, true);
   // Victory finisher slam
   setTimeout(() => { slam(finisher, wc, 2); }, 1500);
   // Show result screen after a short delay so video plays first
