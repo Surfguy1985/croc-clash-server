@@ -4290,7 +4290,9 @@ $('lobby-back').addEventListener('click',()=>{
 $('lobby-share').addEventListener('click',()=>{
   const code = $('lobby-room-code')?.textContent?.trim();
   if(!code) return;
-  const url = location.origin + location.pathname + '?room=' + code;
+  // Always point to the PWA on GitHub Pages, regardless of where the game is being played from
+  const pwaBase = 'https://surfguy1985.github.io/croc-clash-server/';
+  const url = pwaBase + '?room=' + code;
   const msg = '\uD83D\uDC0A Join my Croc Clash match! ' + url;
   // TikTok in-app share
   if(typeof TT !== 'undefined' && TT.isInTikTok()){
