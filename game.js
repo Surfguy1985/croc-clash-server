@@ -880,14 +880,14 @@ addEventListener('resize', resize); resize();
 
 // ─── CUSTOMIZABLE KEY BINDINGS ───
 const DEFAULT_BINDS_P1 = {
-  left:'KeyA', right:'KeyD', up:'KeyW', down:'KeyS',
-  attack:'KeyF', dash:'KeyG', parry:'KeyR',
-  launch:'KeyQ', power1:'Digit1', power2:'Digit2', rage:'KeyT'
+  left:'ArrowLeft', right:'ArrowRight', up:'ArrowUp', down:'ArrowDown',
+  attack:'KeyS', dash:'KeyA', parry:'KeyF',
+  launch:'KeyD', power1:'KeyX', power2:'KeyC', rage:'KeyR'
 };
 const DEFAULT_BINDS_P2 = {
-  left:'ArrowLeft', right:'ArrowRight', up:'ArrowUp', down:'ArrowDown',
-  attack:'KeyL', dash:'KeyK', parry:'KeyP',
-  launch:'KeyO', power1:'Digit7', power2:'Digit8', rage:'Digit0'
+  left:'KeyJ', right:'KeyL', up:'KeyI', down:'KeyK',
+  attack:'KeyH', dash:'KeyG', parry:'KeyY',
+  launch:'KeyU', power1:'KeyN', power2:'KeyM', rage:'KeyT'
 };
 const ACTION_LABELS = {
   left:'Move Left', right:'Move Right', up:'Jump', down:'Crouch/Down',
