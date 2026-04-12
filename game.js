@@ -5705,6 +5705,20 @@ $('btn-changename').addEventListener('click', ()=>{
   showNameEntry(true);
 });
 
+// ─── ROTATE HINT (mobile portrait only) ───
+(function initRotateHint(){
+  if(!IS_MOBILE) return;
+  const hint = $('rotate-hint');
+  if(!hint) return;
+  function check(){
+    const portrait = window.innerHeight > window.innerWidth;
+    hint.style.display = portrait ? 'block' : 'none';
+  }
+  check();
+  window.addEventListener('resize', check);
+  screen.orientation && screen.orientation.addEventListener('change', check);
+})();
+
 // On boot: if no name saved, show name entry instead of title
 (function checkNameOnBoot(){
   if(!playerName){
