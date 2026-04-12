@@ -445,12 +445,14 @@ function startCrowdAmbience(){
     src.buffer = buf; src.loop = true;
     const lp = actx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = 380; lp.Q.value = 0.8;
-    const g = actx.createGain(); g.gain.value = 0.04;
+    const g = actx.createGain(); g.gain.value = 0;
     src.connect(lp).connect(g).connect(masterGain);
     src.start(); crowdSource = src; crowdGain = g;
   } catch(e) {}
 }
-function setCrowdVolume(v){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(clamp(v,0,0.14), actx.currentTime, 0.3); }
+function setCrowdVolume(v){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(clamp(v,0,0.06), actx.currentTime, 0.3); }
+function muteCrowd(){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(0, actx.currentTime, 0.15); }
+function unmuteCrowd(){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(0.03, actx.currentTime, 0.3); }
 
 // ─── PREMIUM SFX ───
 function sfxHit(c){
@@ -815,6 +817,7 @@ function playSpecialVideo(category, duration, locked){
   if(!videoEl || !videoElB) return;
   if(videoPlaying && videoLocked) return;
   if(!locked && videoCooldown > 0) return;
+  muteCrowd(); // silence crowd ambience during video so audio is clean
   const src = typeof category === 'string' && category.startsWith('video/') ? category : getRotatedVid(category);
   if(!src) return;
   const incoming = (activeVidSlot === 'A') ? videoElB : videoEl;
@@ -866,6 +869,7 @@ function hideVideoImmediate(){
   videoPlaying = false;
   videoLocked = false;
   if(videoTimeout){ clearTimeout(videoTimeout); videoTimeout = null; }
+  unmuteCrowd(); // bring crowd ambience back after video ends
 }
 
 // ─── CANVAS ───
@@ -2923,8 +2927,10 @@ function updateCroc(c,inp,o,dt){
   // Hit recoil — snaps then decays
   c.hitRecoil = lerp(c.hitRecoil, 0, dt * 10);
 
-  // Crowd ambience scales with combo
-  setCrowdVolume(0.04 + clamp(c.combo/20,0,1)*0.1);
+  // Crowd ambience scales with combo — only during active gameplay, muted during videos
+  if(!videoPlaying && !matchIntroPlaying){
+    setCrowdVolume(0.02 + clamp(c.combo/20,0,1)*0.04);
+  }
 }
 
 // ─── AI ───
@@ -3052,6 +3058,7 @@ function playMatchIntro(onDone){
   const src = 'video/match-intro.mp4';
   if(!videoEl || !videoElB){ onDone(); return; }
   matchIntroPlaying = true;
+  muteCrowd(); // silence crowd during intro video
   // Clear any previous timers
   if(matchIntroTimer) clearTimeout(matchIntroTimer);
   if(matchIntroCleanup) clearTimeout(matchIntroCleanup);
@@ -3125,6 +3132,7 @@ function playMatchIntro(onDone){
     videoPlaying = false; videoLocked = false;
     matchIntroPlaying = false;
     matchIntroTimer = null; matchIntroCleanup = null;
+    unmuteCrowd(); // bring crowd back for gameplay
     onDone();
   }, totalDur);
 }
