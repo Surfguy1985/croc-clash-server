@@ -4831,12 +4831,14 @@ function gameLoop(now){
   // RENDER
   ctx.save();ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
-  // Bottom-anchored zoom: floor stays pinned at screen bottom.
-  // When dynSc < baseSc (zoomed out), the game shrinks but the floor
-  // pixel position stays the same.
-  const floorScreen = oy + AH * baseSc; // floor pos in screen px (constant)
-  const renderOy = floorScreen - AH * dynSc; // new top-left Y so floor stays put
-  ctx.translate(ox + shX * dynSc, renderOy + shY * dynSc);
+  // Bottom-anchored zoom: floor stays pinned at screen bottom,
+  // game stays horizontally centered.
+  const cW = PERF_LOW ? canvas.width : W; // actual canvas pixel width
+  const cH = PERF_LOW ? canvas.height : H;
+  const renderOx = (cW - AW * dynSc) / 2; // re-center X for current zoom
+  const floorScreen = oy + AH * baseSc;     // floor pos in screen px (constant)
+  const renderOy = floorScreen - AH * dynSc; // top-left Y so floor stays put
+  ctx.translate(renderOx + shX * dynSc, renderOy + shY * dynSc);
   ctx.scale(dynSc, dynSc);
 
   drawArena(gameTime);
