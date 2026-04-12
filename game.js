@@ -3268,18 +3268,47 @@ function endRound(w){
   matchStats.p1h+=p1.hits;matchStats.p2h+=p2.hits;
   matchStats.p1c=Math.max(matchStats.p1c,p1.maxCombo);matchStats.p2c=Math.max(matchStats.p2c,p2.maxCombo);
   matchStats.p1p+=p1.parryCount;matchStats.p2p+=p2.parryCount;
-  if(w){w.wins++;if(w.hp>=MAX_HP){slam(pick(PERFECT_LINES),'#ffd740',2);sfxPerfect();goldenRain(AW/2,AH*.25);bloomInt=1}else slam(pick(KO_LINES),'#ff3d00',1.8)}
-  else slam("TIME'S UP!!",'#fbbf24',1.5);
+  if(w){
+    w.wins++;
+    if(w.hp>=MAX_HP){
+      const pLine=pick(PERFECT_LINES);
+      slam(pLine,'#ffd740',2);sfxPerfect();goldenRain(AW/2,AH*.25);bloomInt=1;
+      hostSendEvent({type:'sfx',name:'perfect'});
+      hostSendEvent({type:'slam',text:pLine,color:'#ffd740',dur:2});
+    } else {
+      const koLine=pick(KO_LINES);
+      slam(koLine,'#ff3d00',1.8);
+      hostSendEvent({type:'slam',text:koLine,color:'#ff3d00',dur:1.8});
+    }
+  } else {
+    slam("TIME'S UP!!",'#fbbf24',1.5);
+    hostSendEvent({type:'slam',text:"TIME'S UP!!",'color':'#fbbf24',dur:1.5});
+  }
   const isMatchWin = w && (w.wins >= ROUNDS_TO_WIN);
   // Play KO video at end of round — but skip if this is the final match-winning round
   // (the boss KO video in endMatch() handles that instead)
   if(w && !isMatchWin){
+    const koVid = getKOVideo(w);
     hideVideo();
-    playSpecialVideo(getKOVideo(w), 10500, true);
+    playSpecialVideo(koVid, 10500, true);
+    // Broadcast video to guest
+    hostSendEvent({type:'video', src:koVid, dur:10500, locked:true});
   }
   // Advance after video (or immediately if match-winning round)
   const advanceDelay = (w && !isMatchWin) ? 11500 : 2500;
-  setTimeout(()=>{ hideVideo(); if(isMatchWin) endMatch(); else { roundNum++; startCD(); } }, advanceDelay);
+  setTimeout(()=>{
+    hideVideo();
+    hostSendEvent({type:'hideVideo'});
+    if(isMatchWin) endMatch();
+    else {
+      roundNum++;
+      startCD();
+      // Broadcast round start to guest
+      hostSendEvent({type:'roundStart', cd:2.2, rn:roundNum});
+      hostSendEvent({type:'sfx', name:'round'});
+      hostSendEvent({type:'slam', text:'Round '+roundNum, color:'#ffd740', dur:1.5});
+    }
+  }, advanceDelay);
 }
 function endMatch(){
   state='result';
@@ -3299,11 +3328,22 @@ function endMatch(){
   $('res-grid').innerHTML=`<div><div class="v">${matchStats.p1h}</div><div class="l">Gary Hits</div></div><div><div class="v">${matchStats.p2h}</div><div class="l">Carl Hits</div></div><div><div class="v">${matchStats.p1c}</div><div class="l">Gary Best Combo</div></div><div><div class="v">${matchStats.p2c}</div><div class="l">Carl Best Combo</div></div><div><div class="v">${matchStats.p1p}</div><div class="l">Gary Parries</div></div><div><div class="v">${matchStats.p2p}</div><div class="l">Carl Parries</div></div><div style="grid-column:span 2;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;margin-top:4px"><div class="v" style="font-size:15px">${tier.icon} ${tier.name}</div><div class="l">RANK — ${playerElo} ELO</div></div>${dailyStr}`;
 
   // Play alternating winner cinematic finishing video (locked = unskippable)
-  playSpecialVideo(getKOVideo(w), 10500, true);
+  const matchKOVid = getKOVideo(w);
+  playSpecialVideo(matchKOVid, 10500, true);
+  // Broadcast to guest: video + result screen
+  hostSendEvent({type:'video', src:matchKOVid, dur:10500, locked:true});
+  hostSendEvent({type:'matchEnd', resultHTML:true,
+    winner: '\u{1F40A} '+w.name+' '+pick(WIN_LINES), winColor: wc,
+    score: p1.wins+' \u2014 '+p2.wins,
+    gridHTML: $('res-grid').innerHTML,
+    delay: 11500
+  });
   // Wait for the KO video to finish before showing anything
-  // Video is 10.5s — show result screen after it completes
   const videoDelay = 11000;
-  setTimeout(() => { slam(finisher, wc, 2); }, videoDelay);
+  setTimeout(() => {
+    slam(finisher, wc, 2);
+    hostSendEvent({type:'slam', text:finisher, color:wc, dur:2});
+  }, videoDelay);
   setTimeout(() => { $('result-screen').classList.remove('hidden'); }, videoDelay + 500);
 
   // Win tracking + ELO + Battle Pass + Streak rewards
@@ -3609,7 +3649,76 @@ function renderLoadoutPhase(totalWins){
   }
 }
 
-// ─── ONLINE MULTIPLAYER SYNC ───
+// ─── ONLINE MULTIPLAYER SYNC (v3.0 — interpolation, events, projectiles) ───
+
+// ── Guest interpolation ──
+// Store previous + target state for smooth lerp between server updates
+let guestPrevState = null;  // previous server snapshot
+let guestTargState = null;  // latest server snapshot
+let guestLerpT = 0;         // 0…1 interpolation progress
+const GUEST_LERP_RATE = 16; // how fast to interpolate (higher = snappier)
+let guestStateAge = 0;      // time since last state received
+const GUEST_STALE_MS = 500; // if no state for this long, snap directly
+
+function lerpVal(a, b, t){ return a + (b - a) * t; }
+
+function lerpCroc(c, prev, targ, t){
+  if(!c||!prev||!targ) return;
+  // Position: smooth lerp
+  c.x = lerpVal(prev.x, targ.x, t);
+  c.y = lerpVal(prev.y, targ.y, t);
+  c.vx = targ.vx; c.vy = targ.vy;
+  // Animation values: lerp for smoothness
+  c.atkAnim = lerpVal(prev.atkAnim||0, targ.atkAnim||0, t);
+  c.walkCycle = lerpVal(prev.walkCycle||0, targ.walkCycle||0, t);
+  c.bodyLean = lerpVal(prev.bodyLean||0, targ.bodyLean||0, t);
+  c.hitFlash = lerpVal(prev.hitFlash||0, targ.hitFlash||0, t);
+  c.squash = lerpVal(prev.squash||0, targ.squash||0, t);
+  c.stretch = lerpVal(prev.stretch||0, targ.stretch||0, t);
+  c.launchRot = lerpVal(prev.launchRot||0, targ.launchRot||0, t);
+  c.deathRot = lerpVal(prev.deathRot||0, targ.deathRot||0, t);
+  // Discrete values: snap to latest
+  c.face=targ.face;c.hp=targ.hp;c.alive=targ.alive;c.grounded=targ.grounded;
+  c.atk=targ.atk;c.atkT=targ.atkT;c.atkCD=targ.atkCD;
+  c.dashing=targ.dashing;c.dashT=targ.dashT;c.dashDir=targ.dashDir;
+  c.tornadoAct=targ.tornadoAct;c.tailAct=targ.tailAct;
+  c.parrying=targ.parrying;c.parryT=targ.parryT;c.parryOK=targ.parryOK;
+  c.launched=targ.launched;
+  c.stunned=targ.stunned;c.stunT=targ.stunT;
+  c.frozen=targ.frozen;c.frozenT=targ.frozenT;
+  c.dizzy=targ.dizzy;c.dizzyT=targ.dizzyT;
+  c.combo=targ.combo;c.wins=targ.wins;
+  c.dead=targ.dead;
+  c.comebackActive=targ.comebackActive;
+  c.rageSuperUsed=targ.rageSuperUsed;
+  c.rageCD=targ.rageCD;
+  c.pow1CD=targ.pow1CD;c.pow2CD=targ.pow2CD;
+  c.launchCD=targ.launchCD;
+}
+
+function applyCrocSnap(c, s){
+  if(!c||!s) return;
+  c.x=s.x;c.y=s.y;c.vx=s.vx;c.vy=s.vy;
+  c.face=s.face;c.hp=s.hp;c.alive=s.alive;c.grounded=s.grounded;
+  c.atk=s.atk;c.atkT=s.atkT;c.atkCD=s.atkCD;
+  c.dashing=s.dashing;c.dashT=s.dashT;c.dashDir=s.dashDir;
+  c.tornadoAct=s.tornadoAct;c.tailAct=s.tailAct;
+  c.parrying=s.parrying;c.parryT=s.parryT;c.parryOK=s.parryOK;
+  c.launched=s.launched;c.launchRot=s.launchRot;
+  c.stunned=s.stunned;c.stunT=s.stunT;
+  c.frozen=s.frozen;c.frozenT=s.frozenT;
+  c.dizzy=s.dizzy;c.dizzyT=s.dizzyT;
+  c.hitFlash=s.hitFlash;c.squash=s.squash;c.stretch=s.stretch;
+  c.combo=s.combo;c.wins=s.wins;
+  c.dead=s.dead;c.deathRot=s.deathRot;
+  c.comebackActive=s.comebackActive;
+  c.rageSuperUsed=s.rageSuperUsed;
+  c.rageCD=s.rageCD;
+  c.pow1CD=s.pow1CD;c.pow2CD=s.pow2CD;
+  c.launchCD=s.launchCD;
+  c.atkAnim=s.atkAnim;
+  c.walkCycle=s.walkCycle;c.bodyLean=s.bodyLean;
+}
 
 function serializeCroc(c){
   return {
@@ -3635,57 +3744,152 @@ function serializeCroc(c){
     walkCycle:+(c.walkCycle.toFixed(2)),bodyLean:+(c.bodyLean.toFixed(2)),
   };
 }
-function applyCrocState(c, s){
-  if(!c||!s) return;
-  c.x=s.x;c.y=s.y;c.vx=s.vx;c.vy=s.vy;
-  c.face=s.face;c.hp=s.hp;c.alive=s.alive;c.grounded=s.grounded;
-  c.atk=s.atk;c.atkT=s.atkT;c.atkCD=s.atkCD;
-  c.dashing=s.dashing;c.dashT=s.dashT;c.dashDir=s.dashDir;
-  c.tornadoAct=s.tornadoAct;c.tailAct=s.tailAct;
-  c.parrying=s.parrying;c.parryT=s.parryT;c.parryOK=s.parryOK;
-  c.launched=s.launched;c.launchRot=s.launchRot;
-  c.stunned=s.stunned;c.stunT=s.stunT;
-  c.frozen=s.frozen;c.frozenT=s.frozenT;
-  c.dizzy=s.dizzy;c.dizzyT=s.dizzyT;
-  c.hitFlash=s.hitFlash;c.squash=s.squash;c.stretch=s.stretch;
-  c.combo=s.combo;c.wins=s.wins;
-  c.dead=s.dead;c.deathRot=s.deathRot;
-  c.comebackActive=s.comebackActive;
-  c.rageSuperUsed=s.rageSuperUsed;
-  c.rageCD=s.rageCD;
-  c.pow1CD=s.pow1CD;c.pow2CD=s.pow2CD;
-  c.launchCD=s.launchCD;
-  c.atkAnim=s.atkAnim;
-  c.walkCycle=s.walkCycle;c.bodyLean=s.bodyLean;
-}
 
 function serializeGameState(){
   return {
     p1:serializeCroc(p1), p2:serializeCroc(p2),
     st:state, rt:+(roundTimer.toFixed(2)), rn:roundNum,
     cd:+(cdTimer.toFixed(2)),
+    gt:+(gameTime.toFixed(2)),
     // Projectiles — send compact form
     pj:projectiles.slice(0,20).map(p=>({
       x:Math.round(p.x),y:Math.round(p.y),vx:Math.round(p.vx),vy:Math.round(p.vy),
-      tp:p.type,ow:p.owner===p1?1:2,act:p.active
+      tp:p.type,ow:p.owner===p1?1:2,act:p.active,sz:p.size||PILLOW_SIZE
     })),
   };
 }
 
 function applyGameState(s){
   if(!s||!p1||!p2) return;
-  applyCrocState(p1, s.p1);
-  applyCrocState(p2, s.p2);
+  // Shift previous target into prev, store new target
+  guestPrevState = guestTargState || s;
+  guestTargState = s;
+  guestLerpT = 0;
+  guestStateAge = 0;
+  // Always snap discrete game state
   state = s.st;
   roundTimer = s.rt;
   roundNum = s.rn;
   cdTimer = s.cd;
+  // Apply projectiles from host
+  applyProjectilesFromHost(s.pj || []);
   updateHUD();
 }
 
+// Guest: lerp crocs each frame for smooth rendering
+function guestInterpolate(dt){
+  if(!guestTargState||!p1||!p2) return;
+  guestStateAge += dt * 1000;
+  guestLerpT = Math.min(1, guestLerpT + GUEST_LERP_RATE * dt);
+  if(guestStateAge > GUEST_STALE_MS || !guestPrevState){
+    // Stale or first state — snap directly
+    applyCrocSnap(p1, guestTargState.p1);
+    applyCrocSnap(p2, guestTargState.p2);
+  } else {
+    // Smooth interpolation
+    lerpCroc(p1, guestPrevState.p1, guestTargState.p1, guestLerpT);
+    lerpCroc(p2, guestPrevState.p2, guestTargState.p2, guestLerpT);
+  }
+}
+
+// Apply projectiles received from host on guest side
+function applyProjectilesFromHost(pjArr){
+  // Simple approach: rebuild projectiles array from host data
+  // This ensures guest always matches host
+  projectiles.length = 0;
+  for(const p of pjArr){
+    if(!p.act) continue;
+    projectiles.push({
+      x:p.x, y:p.y, vx:p.vx, vy:p.vy,
+      type:p.tp, owner:p.ow===1?p1:p2, active:true,
+      size:p.sz||PILLOW_SIZE, rot:0, life:5,
+      boomerang:p.tp==='boomerang', returning:false,
+      originX:p.x, originY:p.y
+    });
+  }
+}
+
+// ── Host → Guest event broadcasting ──
+// The host sends discrete events for videos, effects, and transitions
+// so the guest plays them in sync
+function hostSendEvent(ev){
+  if(!isOnline||!amHost) return;
+  if(typeof MP !== 'undefined') MP.sendEvent(ev);
+}
+
+// Guest receives and executes events from host
+function handleOnlineEvent(ev){
+  if(!ev) return;
+  switch(ev.type){
+    case 'video':
+      // Play video on guest
+      hideVideo();
+      playSpecialVideo(ev.src, ev.dur||10500, !!ev.locked);
+      break;
+    case 'slam':
+      slam(ev.text, ev.color||'#fff', ev.dur||1.5);
+      break;
+    case 'sfx':
+      if(ev.name==='round') sfxRound();
+      else if(ev.name==='ko') sfxKO();
+      else if(ev.name==='perfect'){ sfxPerfect(); goldenRain(AW/2,AH*.25); bloomInt=1; }
+      break;
+    case 'roundStart':
+      // Guest: start the countdown
+      resetRound(); state='countdown'; cdTimer=ev.cd||2.2;
+      $('hud').classList.remove('hidden');
+      $('title-screen').classList.add('hidden');
+      $('result-screen').classList.add('hidden');
+      $('loadout-screen').classList.add('hidden');
+      $('online-lobby').classList.add('hidden');
+      updatePowerHUD();
+      break;
+    case 'matchEnd':
+      // Guest: show result screen
+      state='result';
+      if(ev.resultHTML){
+        $('res-winner').textContent = ev.winner || '';
+        $('res-winner').style.color = ev.winColor || '#fff';
+        $('res-score').textContent = ev.score || '';
+        $('res-grid').innerHTML = ev.gridHTML || '';
+        $('res-streak').innerHTML = ev.streakHTML || '';
+        $('res-streak').style.display = ev.streakHTML ? 'block' : 'none';
+      }
+      setTimeout(() => { $('result-screen').classList.remove('hidden'); }, ev.delay || 11500);
+      break;
+    case 'hideVideo':
+      hideVideo();
+      break;
+    case 'screenFlash':
+      screenFlash(ev.color, ev.dur);
+      break;
+    case 'vignette':
+      vignette(ev.color, ev.dur);
+      break;
+    case 'trauma':
+      addTrauma(ev.amount);
+      break;
+    case 'hitStop':
+      hitStop(ev.dur);
+      break;
+    case 'slowMo':
+      slowMo(ev.dur, ev.scale);
+      break;
+    case 'rematchStart':
+      // Opponent wants rematch — restart online loadout
+      launchOnlineGame();
+      break;
+  }
+}
+
 // Send local input to host (guest only) — sends EVERY frame so held keys stay alive
-function sendLocalInputToHost(){
+let guestInputTimer = 0;
+const GUEST_INPUT_INTERVAL = 0.033; // ~30fps
+function sendLocalInputToHost(dt){
   if(!isOnline||amHost) return;
+  guestInputTimer += dt;
+  if(guestInputTimer < GUEST_INPUT_INTERVAL) return;
+  guestInputTimer = 0;
   const raw = getLocalP1();
   // Merge buffered one-shot inputs (catches touch taps that resolved between frames)
   const inp = {
@@ -3704,14 +3908,35 @@ function sendLocalInputToHost(){
   // Clear one-shot buffer after reading
   guestInputBuf.up=false;guestInputBuf.down=false;guestInputBuf.attack=false;guestInputBuf.dash=false;
   guestInputBuf.parry=false;guestInputBuf.launch=false;guestInputBuf.power1=false;guestInputBuf.power2=false;guestInputBuf.rage=false;
-  // Always send at ~30fps so host has continuous state of held keys
   if(typeof MP !== 'undefined') MP.sendInput(inp);
 }
 
-// Host sends game state to guest
-function hostBroadcastState(){
+// Host sends game state to guest (throttled to ~20fps for bandwidth)
+let hostBroadcastTimer = 0;
+const HOST_BROADCAST_INTERVAL = 0.05; // 50ms = 20fps
+function hostBroadcastState(dt){
   if(!isOnline||!amHost) return;
+  hostBroadcastTimer += dt;
+  if(hostBroadcastTimer < HOST_BROADCAST_INTERVAL) return;
+  hostBroadcastTimer = 0;
   if(typeof MP !== 'undefined') MP.sendState(serializeGameState());
+}
+
+// ── Connection quality monitor ──
+let netPingMs = 0;
+let netPingTimer = 0;
+let netPingSent = 0;
+function updateNetPing(dt){
+  if(!isOnline) return;
+  netPingTimer += dt;
+  if(netPingTimer > 2){
+    netPingTimer = 0;
+    netPingSent = performance.now();
+    if(typeof MP !== 'undefined') MP.sendEvent({type:'ping_req'});
+  }
+}
+function handlePingReply(){
+  netPingMs = Math.round(performance.now() - netPingSent);
 }
 
 // ─── ONLINE LOBBY CONTROLLER ───
@@ -3782,6 +4007,20 @@ function showOnlineLobby(){
         remoteInput.power2 = remoteInput.power2 || !!inp.power2;
         remoteInput.rage   = remoteInput.rage   || !!inp.rage;
       }
+    };
+    MP.onEvent = (ev) => {
+      if(!ev) return;
+      // Ping system: reply to ping requests
+      if(ev.type === 'ping_req'){
+        MP.sendEvent({type:'ping_reply'});
+        return;
+      }
+      if(ev.type === 'ping_reply'){
+        handlePingReply();
+        return;
+      }
+      // Guest handles game events from host
+      if(isOnline) handleOnlineEvent(ev);
     };
     MP.onError = (msg) => {
       document.getElementById('lobby-error').textContent = msg;
@@ -3948,7 +4187,42 @@ function tryStartOnlineMatch(){
   loadout[theirSlot] = remoteLoadout || {power1:'freeze',power2:'shotgun',skin:'default'};
   $('loadout-screen').classList.add('hidden');
   if(typeof MP !== 'undefined') MP.sendGameStart();
-  startGame(false);
+  if(amHost){
+    // Host runs the authoritative game simulation
+    startGame(false);
+    // Broadcast match intro video + first round start to guest
+    hostSendEvent({type:'video', src:'video/match-intro.mp4', dur:6000, locked:false});
+    // Broadcast first round start after intro delay
+    setTimeout(() => {
+      hostSendEvent({type:'roundStart', cd:2.2, rn:1});
+      hostSendEvent({type:'sfx', name:'round'});
+      hostSendEvent({type:'slam', text:'Round 1', color:'#ffd740', dur:1.5});
+    }, 6200);
+  } else {
+    // Guest: initialize crocs + loadouts but don't run simulation
+    // Guest relies on state updates from host for positions
+    isAI = false;
+    initP();
+    roundNum = 1;
+    matchStats = {p1h:0,p2h:0,p1c:0,p2c:0,p1p:0,p2p:0,rds:0};
+    activeMutator = MUTATORS[0];
+    isOnline = true;
+    if(isOnline) showTouchControls(false);
+    showKeyLegend();
+    // Play the same intro video locally for instant visual feedback
+    playMatchIntro(() => {
+      // After intro, guest enters countdown state
+      // But actual state is driven by host's broadcasts
+      resetRound(); state = 'countdown'; cdTimer = 2.2;
+      $('hud').classList.remove('hidden');
+      updatePowerHUD();
+    });
+    // Reset interpolation state
+    guestPrevState = null;
+    guestTargState = null;
+    guestLerpT = 0;
+    guestStateAge = 0;
+  }
 }
 
 // ─── DOM BINDINGS ───
@@ -3957,7 +4231,16 @@ const $ = id => document.getElementById(id);
 $('btn-online').addEventListener('click',()=>{ initAudio(); isOnline=false; showOnlineLobby(); });
 $('btn-pvp').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=false; buildLoadoutScreen(); });
 $('btn-ai').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=true; buildLoadoutScreen(); });
-$('btn-rematch').addEventListener('click',()=>{ roundNum=1; startGame(isAI); });
+$('btn-rematch').addEventListener('click',()=>{
+  if(isOnline && typeof MP!=='undefined'){
+    // Online rematch: go back to loadout selection
+    hostSendEvent({type:'rematchStart'});
+    launchOnlineGame();
+    $('result-screen').classList.add('hidden');
+    return;
+  }
+  roundNum=1; startGame(isAI);
+});
 $('btn-menu2').addEventListener('click',()=>{
   state='title';
   if(isOnline && typeof MP!=='undefined') MP.disconnect();
@@ -4180,12 +4463,14 @@ function gameLoop(now){
   updateShake(rawDt);updateCamera(dt);updateParts(dt);updateFloats(dt);
   if(mysteryBox)updateMysteryBox(dt);
 
-  // Online guest: only send input and render received state
+  // Online guest: send input, interpolate received state, render
   if(isOnline && !amHost){
-    sendLocalInputToHost();
-    // Guest still ticks countdown/render timers for visual smoothness
+    sendLocalInputToHost(rawDt);
+    guestInterpolate(rawDt);
+    // Guest still ticks countdown locally for visual smoothness
     if(state==='countdown'){cdTimer-=rawDt;if(cdTimer<=0) state='playing';}
     if(p1&&p2) updateHUD();
+    updateNetPing(rawDt);
   } else {
     // Host or local: run full simulation
     if(state==='countdown'){cdTimer-=rawDt;if(cdTimer<=0)startPlay()}
@@ -4200,12 +4485,11 @@ function gameLoop(now){
     }
     if(state==='roundEnd'){updateCroc(p1,{},p2,dt);updateCroc(p2,{},p1,dt);updateHUD()}
     // Host: clear ONLY one-shot actions from remote input (NOT held directional keys)
-    // left/right are continuous — they persist until the next input message updates them
     if(isOnline && amHost){
       remoteInput.up=false;remoteInput.down=false;remoteInput.attack=false;remoteInput.dash=false;
       remoteInput.parry=false;remoteInput.launch=false;remoteInput.power1=false;remoteInput.power2=false;remoteInput.rage=false;
-      // left and right are NOT cleared — they stay until next remoteInput update
-      hostBroadcastState();
+      hostBroadcastState(rawDt);
+      updateNetPing(rawDt);
     }
   }
 
@@ -4228,6 +4512,20 @@ function gameLoop(now){
     const tv=ctx.createRadialGradient(AW/2,AH/2,AW*.2,AW/2,AH/2,AW*.7);
     tv.addColorStop(0,'transparent');tv.addColorStop(1,'rgba(0,0,0,.55)');
     ctx.fillStyle=tv;ctx.fillRect(0,0,AW,AH);
+  }
+
+  // Online ping indicator (drawn in screen space, inside the scaled canvas)
+  if(isOnline && state !== 'title'){
+    const pingColor = netPingMs < 80 ? '#4ade80' : netPingMs < 150 ? '#fbbf24' : '#f87171';
+    const pingLabel = netPingMs > 0 ? netPingMs + 'ms' : '...';
+    ctx.save();
+    ctx.font = '600 11px "Space Grotesk",sans-serif';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,.4)';
+    ctx.fillRect(AW - 62, 2, 60, 16);
+    ctx.fillStyle = pingColor;
+    ctx.fillText('\u{1F4F6} ' + pingLabel, AW - 6, 4);
+    ctx.restore();
   }
 
   ctx.restore();

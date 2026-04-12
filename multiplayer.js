@@ -29,6 +29,7 @@ const MP = (() => {
   let onConnected = null;
   let onRematch = null;
   let onLoadout = null;
+  let onEvent = null;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -183,6 +184,10 @@ const MP = (() => {
         if (onLoadout) onLoadout(msg.lo, msg.from);
         break;
 
+      case 'event':
+        if (onEvent) onEvent(msg.ev);
+        break;
+
       case 'room_closed':
         console.log('[MP] Room closed:', msg.reason);
         roomCode = null;
@@ -246,6 +251,11 @@ const MP = (() => {
     send({ t: 'loadout', lo });
   }
 
+  /** Send a game event to the opponent (videos, effects, round transitions) */
+  function sendEvent(ev) {
+    send({ t: 'event', ev });
+  }
+
   function disconnect() {
     intentionalClose = true;
     stopPing();
@@ -265,7 +275,7 @@ const MP = (() => {
 
   return {
     connect, createRoom, joinRoom, sendInput, sendState, disconnect,
-    sendRematch, sendGameStart, sendLoadout,
+    sendRematch, sendGameStart, sendLoadout, sendEvent,
     isHost, isGuest, isConnected, getRoom, getPlayerNum,
     set onOpponentInput(fn)  { onOpponentInput  = fn; },
     set onStateUpdate(fn)    { onStateUpdate    = fn; },
@@ -278,5 +288,6 @@ const MP = (() => {
     set onConnected(fn)      { onConnected      = fn; },
     set onRematch(fn)        { onRematch        = fn; },
     set onLoadout(fn)        { onLoadout        = fn; },
+    set onEvent(fn)          { onEvent          = fn; },
   };
 })();
