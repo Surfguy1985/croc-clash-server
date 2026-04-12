@@ -5065,7 +5065,8 @@ function tryStartOnlineMatch(){
 const $ = id => document.getElementById(id);
 
 $('btn-online').addEventListener('click',()=>{ initAudio(); isOnline=false; showOnlineLobby(); });
-$('btn-pvp').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=false; buildLoadoutScreen(); });
+// btn-pvp removed from UI
+if($('btn-pvp')) $('btn-pvp').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=false; buildLoadoutScreen(); });
 $('btn-ai').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=true; buildLoadoutScreen(); });
 $('btn-rematch').addEventListener('click',()=>{
   if(isOnline && typeof MP!=='undefined'){
