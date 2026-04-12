@@ -1769,6 +1769,27 @@ let trauma=0,shX=0,shY=0,shT=0;
 function addTrauma(t){trauma=clamp(trauma+t,0,1)}
 function updateShake(dt){shT+=dt*22;trauma=Math.max(0,trauma-TRAUMA_DECAY*dt);const m=trauma*trauma;shX=noise1D(shT)*m*22;shY=noise1D(shT+100)*m*22}
 
+// ─── CAMERA FOLLOW (vertical) ───
+let camY = 0; // current camera Y offset (arena coords, negative = look up)
+const CAM_THRESHOLD = FLOOR_Y - 200; // start following when character above this Y
+const CAM_LERP = 4; // smoothing speed
+const CAM_MAX = 220; // max upward shift in arena coords
+
+function updateCamera(dt){
+  if(!p1 || !p2 || state === 'title') { camY = 0; return; }
+  // Find highest character Y (lowest value = highest on screen)
+  const highestY = Math.min(p1.y, p2.y);
+  let targetY = 0;
+  if(highestY < CAM_THRESHOLD){
+    // How far above threshold
+    targetY = Math.min(CAM_THRESHOLD - highestY, CAM_MAX);
+  }
+  // Smooth lerp toward target
+  camY += (targetY - camY) * Math.min(1, CAM_LERP * dt);
+  // Snap to 0 when very close
+  if(Math.abs(camY) < 0.5 && targetY === 0) camY = 0;
+}
+
 // ─── HIT STOP / SLOW MO ───
 let hsTimer=0,smTimer=0,smScale=1;
 function hitStop(d){hsTimer=Math.max(hsTimer,d)}
@@ -3047,6 +3068,7 @@ function startGame(ai){
   // Online: use single-player touch (you control one croc)
   if(isOnline) showTouchControls(false);
   else showTouchControls(!ai); // 2P touch for PvP, single touch for AI
+  showKeyLegend();
   playMatchIntro(() => startCD());
 }
 
@@ -3646,7 +3668,7 @@ function showOnlineLobby(){
       document.getElementById('result-screen').classList.add('hidden');
       document.getElementById('loadout-screen').classList.add('hidden');
       document.getElementById('online-lobby').classList.add('hidden');
-      hideTouchControls();hideVideo();
+      hideTouchControls();hideKeyLegend();hideVideo();
       slam('OPPONENT LEFT','#f87171',2);
     };
     MP.onStateUpdate = (s) => {
@@ -3854,6 +3876,7 @@ $('btn-menu2').addEventListener('click',()=>{
   $('loadout-screen').classList.add('hidden');
   $('online-lobby').classList.add('hidden');
   hideTouchControls();
+  hideKeyLegend();
   hideVideo();
   updateTitleStreak();
 });
@@ -4062,7 +4085,7 @@ function gameLoop(now){
   flashT=Math.max(0,flashT-rawDt);vigT=Math.max(0,vigT-rawDt);
   const tsc=timeScale(),dt=rawDt*tsc;
 
-  updateShake(rawDt);updateParts(dt);updateFloats(dt);
+  updateShake(rawDt);updateCamera(dt);updateParts(dt);updateFloats(dt);
   if(mysteryBox)updateMysteryBox(dt);
 
   // Online guest: only send input and render received state
@@ -4097,7 +4120,7 @@ function gameLoop(now){
   // RENDER
   ctx.save();ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
-  ctx.translate(ox+shX*sc,oy+shY*sc);
+  ctx.translate(ox+shX*sc, oy+(shY+camY)*sc);
   ctx.scale(sc,sc);
 
   drawArena(gameTime);
@@ -4173,7 +4196,7 @@ loadImages(()=>{
         document.getElementById('result-screen').classList.add('hidden');
         document.getElementById('loadout-screen').classList.add('hidden');
         document.getElementById('online-lobby').classList.add('hidden');
-        hideTouchControls();hideVideo();
+        hideTouchControls();hideKeyLegend();hideVideo();
         slam('OPPONENT LEFT','#f87171',2);
       };
       MP.onStateUpdate = (s) => { if(isOnline && !amHost) applyGameState(s); };
@@ -4212,8 +4235,49 @@ loadImages(()=>{
   }
 });
 
+// ─── ON-SCREEN KEY LEGEND (desktop only) ───
+const LEGEND_ACTIONS = [
+  {key:'left',  label:'←'}, {key:'right', label:'→'},
+  {key:'up',    label:'Jump'}, {key:'down',  label:'Crouch'},
+  {key:'attack',label:'Smack'}, {key:'dash',  label:'Dash'},
+  {key:'parry', label:'Parry'}, {key:'launch',label:'🎯'},
+  {key:'power1',label:'Pow1'}, {key:'power2',label:'Pow2'},
+  {key:'rage',  label:'Rage'}
+];
+
+function renderKeyLegend(){
+  const p1el = $('kleg-p1'), p2el = $('kleg-p2');
+  if(!p1el) return;
+  function buildHTML(player, title, colorClass){
+    const b = keyBinds[player];
+    let h = `<span class="kleg-title ${colorClass}">${title}</span>`;
+    LEGEND_ACTIONS.forEach(a => {
+      h += `<span class="kleg-item"><kbd>${codeToLabel(b[a.key])}</kbd>${a.label}</span>`;
+    });
+    return h;
+  }
+  p1el.innerHTML = buildHTML('p1','GARY (P1)','p1t');
+  if(!isAI && !isOnline){
+    p2el.innerHTML = buildHTML('p2','CARL (P2)','p2t');
+    p2el.style.display = '';
+  } else {
+    p2el.innerHTML = '';
+    p2el.style.display = 'none';
+  }
+}
+
+function showKeyLegend(){
+  const el = $('key-legend');
+  if(el){ el.classList.add('show'); renderKeyLegend(); }
+}
+function hideKeyLegend(){
+  const el = $('key-legend');
+  if(el) el.classList.remove('show');
+}
+
 // ─── CONTROLS CUSTOMIZATION UI ───
 function updateControlsDisplay(){
+  renderKeyLegend(); // refresh on-screen key legend
   const d = $('controls-display');
   if(!d) return;
   const b1 = keyBinds.p1, b2 = keyBinds.p2;
