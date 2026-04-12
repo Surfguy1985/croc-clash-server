@@ -27,8 +27,9 @@
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
     /* Prevent ALL zoom — double-tap, pinch, click outside buttons */
-    html{touch-action:manipulation;-ms-touch-action:manipulation;-webkit-text-size-adjust:100%}
+    html,body{touch-action:manipulation;-ms-touch-action:manipulation;-webkit-text-size-adjust:100%;overscroll-behavior:none}
     *{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    canvas,#gc{touch-action:none}
     :root{
       --fd:'Fredoka',sans-serif;
       --fb:'Space Grotesk',sans-serif;
@@ -589,7 +590,7 @@
   </div>
 
   <script>window.CROC_SERVER = 'https://web-production-66a24.up.railway.app';</script>
-  <!-- Block pinch-zoom and double-tap zoom globally -->
+  <!-- Block ALL zoom: pinch, double-tap, Ctrl+scroll, Ctrl+/-/0, keyboard shortcuts -->
   <script>
   document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
   document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {passive:false});
@@ -601,6 +602,16 @@
     const now=Date.now();
     if(now-lastTouchEnd<300){ e.preventDefault(); }
     lastTouchEnd=now;
+  }, {passive:false});
+  // Block Ctrl+scroll wheel zoom (desktop browsers)
+  document.addEventListener('wheel', function(e){
+    if(e.ctrlKey || e.metaKey){ e.preventDefault(); }
+  }, {passive:false});
+  // Block Ctrl+Plus/Minus/Zero keyboard zoom (desktop browsers)
+  document.addEventListener('keydown', function(e){
+    if((e.ctrlKey || e.metaKey) && (e.key==='+' || e.key==='-' || e.key==='=' || e.key==='0' || e.key==='_')){
+      e.preventDefault();
+    }
   }, {passive:false});
   </script>
   <!-- ══════ CONTROLS SETTINGS SCREEN ══════ -->
