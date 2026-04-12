@@ -1745,6 +1745,8 @@ function doLightningStrike(attacker, victim){
 
 // ─── UPDATE LAUNCHED CROC ───
 function updateLaunched(c, dt){
+  // Clear freeze if character gets launched — shouldn't be frozen AND launched
+  if(c.frozen){ c.frozen=false; c.frozenT=0; c.frozenCracks=0; }
   c.launchTimer += dt;
   c.launchRot += c.launchSpin * dt;
   c.x += c.launchVx * dt;
@@ -1770,6 +1772,7 @@ function updateLaunched(c, dt){
 
     if(c.launchIsKO){
       c.alive = false; c.dead = true;
+      c.frozen=false; c.frozenT=0; c.frozenCracks=0; // clear freeze on death
       c.deathVx = c.launchVx*0.5;
       c.deathVy = -60;
       c.deathRotV = c.launchSpin*0.3;
@@ -2463,7 +2466,7 @@ function drawCroc(c){
   }
 
   // ─── OVERLAY FX (frozen, parry, tornado, dizzy, stun, etc.) ───
-  if(c.frozen){
+  if(c.frozen && !c.dead){
     ctx.save();
     const crackA=clamp(1-(c.frozenT/3),0,1);
     ctx.globalAlpha=0.75-crackA*0.3;
@@ -2789,6 +2792,8 @@ function megaPillowBomb(attacker, victim){
 
 // ─── UPDATE CROC ───
 function updateCroc(c,inp,o,dt){
+  // Safety: clear frozen state if dead
+  if(c.dead && c.frozen){ c.frozen=false; c.frozenT=0; c.frozenCracks=0; }
   if(c.launched){updateLaunched(c,dt);return}
 
   c.atkCD=Math.max(0,c.atkCD-dt);
