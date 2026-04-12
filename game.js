@@ -2951,20 +2951,49 @@ function updateCroc(c,inp,o,dt){
       feathers(c.x+c.w/2, FLOOR_Y-20, 20, '#fff');
       // DAMAGE if near enemy
       const diveDist = dist(c.x+c.w/2, FLOOR_Y, o.x+o.w/2, o.y+o.h/2);
-      if(diveDist < 200 && o.alive && !o.launched){
-        const dmg = diveDist < 100 ? 2 : 1;
-        o.hp = Math.max(0, o.hp - dmg);
-        o.hitFlash = 0.2;
-        o.vx = (o.x+o.w/2 > c.x+c.w/2 ? 1 : -1) * 350;
-        o.vy = -300;
-        o.grounded = false;
-        fText(o.x+o.w/2, o.y-50, 'CRATER!! -' + dmg + ' HP', '#ff3d00', 32, 1.5);
-        _dailyDiveKill = o.hp <= 0; // for daily challenge
+      if(diveDist < 250 && o.alive && !o.launched){
         _dailyHitCount++;
-        if(o.hp <= 0){
-          o.launched=true; o.launchVy=-600; o.launchVx=(o.x>c.x?1:-1)*200;
-          o.launchSpin=(o.x>c.x?1:-1)*8; o.launchRot=0; o.launchTimer=0; o.launchIsKO=true;
-          slowMo(SLO_DUR+0.5, SLO_SCALE); bloomInt=1; chromAb=0.6;
+        if(diveDist < 120){
+          // ─── DIRECT HIT: landed ON opponent → SMASH PIN for 3s + 2 HP ───
+          const dmg = 2;
+          o.hp = Math.max(0, o.hp - dmg);
+          o.hitFlash = 0.3;
+          // Pin the opponent flat (use stun system)
+          o.stunned = true; o.stunT = 3.0;
+          o.squash = 2.0; o.stretch = 0.3; // squished flat
+          o.vx = 0; o.vy = 0;
+          o.grounded = true;
+          o.y = FLOOR_Y - o.h; // pin to floor
+          fText(o.x+o.w/2, o.y-50, 'SMASHED!! -' + dmg + ' HP', '#ff3d00', 38, 2);
+          slam('PILE DRIVE!!', '#ff3d00', 2);
+          screenFlash('rgba(255,60,0,.4)', 0.2);
+          addTrauma(0.9);
+          hitStop(0.25);
+          // Extra impact effects
+          sparks(o.x+o.w/2, FLOOR_Y-20, 30, '#ff6b35');
+          stars(o.x+o.w/2, FLOOR_Y-20, 15);
+          _dailyDiveKill = o.hp <= 0;
+          if(o.hp <= 0){
+            o.stunned=false; o.stunT=0;
+            o.launched=true; o.launchVy=-600; o.launchVx=(o.x>c.x?1:-1)*200;
+            o.launchSpin=(o.x>c.x?1:-1)*8; o.launchRot=0; o.launchTimer=0; o.launchIsKO=true;
+            slowMo(SLO_DUR+0.5, SLO_SCALE); bloomInt=1; chromAb=0.6;
+          }
+        } else {
+          // ─── NEARBY: shockwave splash → -1 HP + knockback ───
+          const dmg = 1;
+          o.hp = Math.max(0, o.hp - dmg);
+          o.hitFlash = 0.2;
+          o.vx = (o.x+o.w/2 > c.x+c.w/2 ? 1 : -1) * 350;
+          o.vy = -300;
+          o.grounded = false;
+          fText(o.x+o.w/2, o.y-50, 'QUAKE!! -1 HP', '#ff6b35', 30, 1.2);
+          _dailyDiveKill = o.hp <= 0;
+          if(o.hp <= 0){
+            o.launched=true; o.launchVy=-600; o.launchVx=(o.x>c.x?1:-1)*200;
+            o.launchSpin=(o.x>c.x?1:-1)*8; o.launchRot=0; o.launchTimer=0; o.launchIsKO=true;
+            slowMo(SLO_DUR+0.5, SLO_SCALE); bloomInt=1; chromAb=0.6;
+          }
         }
       }
       c.squash = 1.5; c.stretch = 0.5;
