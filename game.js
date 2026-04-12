@@ -4286,7 +4286,7 @@ $('lobby-back').addEventListener('click',()=>{
   $('title-screen').classList.remove('hidden');
 });
 
-// Share invite link — pull up messages / share sheet
+// Share invite link — open Messages / share sheet reliably in WebViews
 $('lobby-share').addEventListener('click',()=>{
   const code = $('lobby-room-code')?.textContent?.trim();
   if(!code) return;
@@ -4299,29 +4299,23 @@ $('lobby-share').addEventListener('click',()=>{
     setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
     return;
   }
-  // Mobile: use navigator.share to open native share sheet (Messages, WhatsApp, etc.)
-  if(navigator.share){
-    navigator.share({ title:'Croc Clash \u2014 Join My Game!', text: msg, url }).then(()=>{
-      $('lobby-copied').textContent = '\u2705 Invite sent!';
-      setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
-    }).catch(()=>{});
-    return;
-  }
-  // Desktop / fallback: open SMS link which launches Messages app, then copy to clipboard too
+  // Use a hidden <a> tag to trigger sms: scheme — this is the most reliable
+  // method in WebViews (in-app browsers) where navigator.share and window.open
+  // are often silently blocked. The <a> click is trusted as a user gesture.
   const smsBody = encodeURIComponent(msg);
-  window.open('sms:?body=' + smsBody, '_blank');
-  // Also copy to clipboard as backup
+  const a = document.createElement('a');
+  // iOS uses &body=, Android uses ?body= — sms:&body= works on both
+  a.href = 'sms:&body=' + smsBody;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Also copy link to clipboard as backup
   if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard){
     navigator.clipboard.writeText(url).then(()=>{
-      $('lobby-copied').textContent = '\u2705 Messages opened & link copied!';
+      $('lobby-copied').textContent = '\u2705 Link also copied to clipboard!';
       setTimeout(()=>{ $('lobby-copied').textContent=''; }, 5000);
-    }).catch(()=>{
-      $('lobby-copied').textContent = '\u2705 Messages opened!';
-      setTimeout(()=>{ $('lobby-copied').textContent=''; }, 5000);
-    });
-  } else {
-    $('lobby-copied').textContent = '\u2705 Messages opened!';
-    setTimeout(()=>{ $('lobby-copied').textContent=''; }, 5000);
+    }).catch(()=>{});
   }
 });
 
