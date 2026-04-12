@@ -1,5 +1,5 @@
 // Croc Clash Service Worker — PWA Offline Support
-const CACHE_NAME = 'croc-clash-v11.1';
+const CACHE_NAME = 'croc-clash-v11.2';
 
 // Core assets cached on install (everything needed to play offline)
 const CORE_ASSETS = [
@@ -40,26 +40,16 @@ const CORE_ASSETS = [
   './icons/apple-touch-icon.png',
 ];
 
-// Videos + audio cached lazily on first access
-const LAZY_ASSETS = [
-  './video/match-intro.mp4',
-  './video/ko-gary-wins.mp4',
-  './video/ko-gary-wins-2.mp4',
-  './video/ko-carl-wins.mp4',
-  './video/ko-carl-wins-2.mp4',
-  './video/special-bounce.mp4',
-  './video/special-freeze.mp4',
-  './video/special-ko.mp4',
-  './video/special-lightning.mp4',
-  './video/special-mystery.mp4',
-  './video/special-parry.mp4',
-  './video/special-pillow-launch.mp4',
-  './video/special-saxophone.mp4',
-  './video/special-tail-whip.mp4',
-  './video/special-tornado.mp4',
+// Files that ALWAYS fetch from network first (code updates are instant)
+const NETWORK_FIRST_FILES = [
+  'game.js',
+  'multiplayer.js',
+  'server.js',
+  'index.html',
+  'sw.js',
 ];
 
-// Install: cache core assets
+// Install: cache core assets, skip waiting immediately
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -68,7 +58,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: clean old caches
+// Activate: clean ALL old caches, claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -79,7 +69,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: network-first for HTML, cache-first for assets
+// Fetch strategy
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -89,8 +79,13 @@ self.addEventListener('fetch', (event) => {
       !url.hostname.includes('fonts.googleapis.com') &&
       !url.hostname.includes('fonts.gstatic.com')) return;
 
-  // Navigation requests (HTML pages): always try network first
-  if (event.request.mode === 'navigate') {
+  // Check if this file should always be network-first
+  const filename = url.pathname.split('/').pop();
+  const isNetworkFirst = event.request.mode === 'navigate' ||
+    NETWORK_FIRST_FILES.includes(filename);
+
+  if (isNetworkFirst) {
+    // NETWORK-FIRST: always try to get fresh code, fall back to cache offline
     event.respondWith(
       fetch(event.request).then((response) => {
         if (response.ok) {
@@ -98,12 +93,12 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => caches.match('./index.html'))
+      }).catch(() => caches.match(event.request).then(c => c || caches.match('./index.html')))
     );
     return;
   }
 
-  // All other assets: cache-first, fallback to network
+  // All other assets (images, videos, audio, fonts): cache-first for speed
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
