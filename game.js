@@ -126,23 +126,184 @@ const RANKED_TIERS = [
 ];
 let playerElo = 0;
 function getPlayerTier(){ return RANKED_TIERS.slice().reverse().find(t => playerElo >= t.minElo) || RANKED_TIERS[0]; }
-function eloChange(won){ const delta = won ? randInt(18,32) : -randInt(10,20); playerElo = Math.max(0, playerElo + delta); return delta; }
+function eloChange(won){ const delta = won ? randInt(18,32) : -randInt(10,20); playerElo = Math.max(0, playerElo + delta); savePlayerData(); return delta; }
 
-// ─── WEEKLY LEADERBOARD ───
-let leaderboard = []; // [{name,wins,streak,elo,tier,date}]
-const LB_BOTS = ['SwampKing99','GatorGod','PillowPro','CrocLord','SnapperX','ScaleSlayer','MightyMaw','TailSpin','FangBoss','NiteGator'];
+// ─── PERSISTENT STORAGE ───
+const SAVE_KEY = 'croc_save_v2';
+function getWeekId(){ const d=new Date(); const jan1=new Date(d.getFullYear(),0,1); return d.getFullYear()+'-W'+Math.ceil(((d-jan1)/86400000+jan1.getDay()+1)/7); }
+function getSundayMs(){
+  const d=new Date(); const day=d.getDay();
+  const next=new Date(d); next.setDate(d.getDate()+(7-day)%7); next.setHours(0,0,0,0);
+  if(day===0) next.setDate(next.getDate()+7);
+  return next.getTime();
+}
+function defaultSave(){
+  return {
+    elo:0, wins:0, streak:0, bestStreak:0, losses:0,
+    bpXP:0, bpTier:0,
+    arenas:['boardwalk'],
+    weekId:getWeekId(), weekElo:0, weekWins:0, weekLosses:0,
+    careerElo:0, careerWins:0, careerLosses:0, peakElo:0,
+    history:[], // last 20 match results [{won,elo,delta,arena,time}]
+    bots:null, // seeded bots for this week
+    prevRank:0, // last known rank position
+  };
+}
+function loadPlayerData(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return defaultSave();
+    const d = JSON.parse(raw);
+    // Weekly reset check: if weekId changed, soft-reset
+    const curWeek = getWeekId();
+    if(d.weekId !== curWeek){
+      // Carry over career stats, soft-reset weekly
+      d.careerElo = Math.max(d.careerElo||0, d.elo);
+      d.careerWins = (d.careerWins||0) + (d.weekWins||0);
+      d.careerLosses = (d.careerLosses||0) + (d.weekLosses||0);
+      d.peakElo = Math.max(d.peakElo||0, d.elo);
+      // Soft-reset ELO: keep 40% of previous ELO
+      d.elo = Math.floor(d.elo * 0.4);
+      d.weekId = curWeek;
+      d.weekElo = d.elo;
+      d.weekWins = 0;
+      d.weekLosses = 0;
+      d.streak = 0;
+      d.bots = null; // regenerate bots for new week
+      d.history = [];
+      d.prevRank = 0;
+    }
+    return {...defaultSave(), ...d};
+  } catch(e){ return defaultSave(); }
+}
+function savePlayerData(){
+  try {
+    const d = {
+      elo:playerElo, wins:_memWins, streak:_memStreak, bestStreak:_bestStreak, losses:_memLosses,
+      bpXP, bpTier,
+      arenas:[...unlockedArenas],
+      weekId:getWeekId(), weekElo:_weekElo, weekWins:_weekWins, weekLosses:_weekLosses,
+      careerElo:_careerElo, careerWins:_careerWins, careerLosses:_careerLosses,
+      peakElo:Math.max(_peakElo, playerElo),
+      history:_matchHistory.slice(-20),
+      bots:leaderboard.filter(e=>e.isBot),
+      prevRank:getPlayerRank(),
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(d));
+  } catch(e){}
+}
+let _bestStreak=0, _memLosses=0;
+let _weekElo=0, _weekWins=0, _weekLosses=0;
+let _careerElo=0, _careerWins=0, _careerLosses=0, _peakElo=0;
+let _matchHistory=[]; // [{won,elo,delta,arena,opponent,time}]
+let _prevRank=0;
+
+// Restore on boot — called after _memWins/_memStreak are declared (see restoreOnBoot call below)
+function restorePlayerData(){
+  const d = loadPlayerData();
+  playerElo = d.elo;
+  _memWins = d.wins; _memStreak = d.streak; _bestStreak = d.bestStreak||0; _memLosses = d.losses||0;
+  bpXP = d.bpXP||0; bpTier = d.bpTier||0;
+  unlockedArenas = d.arenas && d.arenas.length ? [...d.arenas] : ['boardwalk'];
+  _weekElo = d.weekElo||0; _weekWins = d.weekWins||0; _weekLosses = d.weekLosses||0;
+  _careerElo = d.careerElo||0; _careerWins = d.careerWins||0; _careerLosses = d.careerLosses||0;
+  _peakElo = d.peakElo||0;
+  _matchHistory = d.history||[];
+  _prevRank = d.prevRank||0;
+}
+// NOTE: restorePlayerData() is called after _memWins/_memStreak declarations
+
+function addMatchResult(won, delta, arena){
+  _matchHistory.push({
+    won, elo:playerElo, delta, arena:arena||currentArena.id,
+    time:Date.now()
+  });
+  if(_matchHistory.length > 20) _matchHistory.shift();
+  if(won){ _weekWins++; } else { _weekLosses++; }
+  savePlayerData();
+}
+
+// ─── WEEKLY LEADERBOARD (persistent seeded bots) ───
+let leaderboard = [];
+const LB_BOTS = [
+  {name:'SwampKing99', base:780, style:'aggressive'},
+  {name:'GatorGod',    base:920, style:'elite'},
+  {name:'PillowPro',   base:540, style:'balanced'},
+  {name:'CrocLord',    base:650, style:'defensive'},
+  {name:'SnapperX',    base:350, style:'aggressive'},
+  {name:'ScaleSlayer',  base:430, style:'balanced'},
+  {name:'MightyMaw',   base:270, style:'defensive'},
+  {name:'TailSpin',    base:160, style:'aggressive'},
+  {name:'FangBoss',    base:500, style:'balanced'},
+  {name:'NiteGator',   base:720, style:'elite'},
+  {name:'BayouBoss',   base:380, style:'aggressive'},
+  {name:'JawDropper',  base:610, style:'defensive'},
+  {name:'SnapAttack',  base:200, style:'balanced'},
+  {name:'CrocStar',    base:850, style:'elite'},
+];
+function seedRand(s){ return function(){ s=(s*16807)%2147483647; return(s-1)/2147483646; }; }
+function generateWeekBots(){
+  // Seed based on week so bots are consistent within a week
+  const weekNum = parseInt(getWeekId().replace(/\D/g,''), 10);
+  const rng = seedRand(weekNum * 31337);
+  return LB_BOTS.map(bot => {
+    const eloVar = Math.floor(rng() * 200 - 100); // ±100
+    const elo = Math.max(50, bot.base + eloVar);
+    const wins = Math.floor(3 + rng() * 25);
+    const streak = Math.floor(rng() * 8);
+    const tier = RANKED_TIERS.slice().reverse().find(t => elo >= t.minElo) || RANKED_TIERS[0];
+    return { name:bot.name, wins, streak, elo, tier:tier.id, isBot:true, style:bot.style, prevElo:elo };
+  });
+}
+function simulateBotProgress(){
+  // Bots gain/lose ELO over time to feel alive
+  // Simulate based on time elapsed since last open
+  const now = Date.now();
+  for(const bot of leaderboard){
+    if(!bot.isBot) continue;
+    // ~1 match per 20min per bot = small drift
+    const drift = Math.floor(Math.random() * 30 - 10); // slightly positive bias
+    bot.prevElo = bot.elo;
+    bot.elo = Math.max(30, bot.elo + drift);
+    const fakeWins = Math.random() > 0.4 ? 1 : 0;
+    bot.wins += fakeWins;
+    if(fakeWins) bot.streak = Math.min(bot.streak+1, 15);
+    else bot.streak = 0;
+    bot.tier = (RANKED_TIERS.slice().reverse().find(t => bot.elo >= t.minElo) || RANKED_TIERS[0]).id;
+  }
+}
 function initLeaderboard(){
-  leaderboard = LB_BOTS.map(n => ({
-    name:n, wins:randInt(3,30), streak:randInt(0,8), elo:randInt(50,900),
-    tier:RANKED_TIERS[randInt(0,4)].id, isBot:true
-  }));
-  leaderboard.push({name:'YOU', wins:getTotalWins(), streak:getStreak(), elo:playerElo, tier:getPlayerTier().id, isBot:false});
+  // Load saved bots or generate fresh for this week
+  const saved = loadPlayerData();
+  if(saved.bots && saved.bots.length >= 10 && saved.weekId === getWeekId()){
+    leaderboard = saved.bots;
+  } else {
+    leaderboard = generateWeekBots();
+  }
+  simulateBotProgress();
+  // Ensure player entry exists
+  const meIdx = leaderboard.findIndex(e => !e.isBot);
+  const me = {
+    name:'YOU', wins:getTotalWins(), streak:getStreak(), elo:playerElo,
+    tier:getPlayerTier().id, isBot:false, prevElo:_prevRank ? playerElo : 0
+  };
+  if(meIdx >= 0) leaderboard[meIdx] = me;
+  else leaderboard.push(me);
   leaderboard.sort((a,b) => b.elo - a.elo);
+  savePlayerData();
 }
 function updateLeaderboardEntry(){
   const me = leaderboard.find(e => !e.isBot);
-  if(me){ me.wins=getTotalWins(); me.streak=getStreak(); me.elo=playerElo; me.tier=getPlayerTier().id; }
+  if(me){
+    me.prevElo = me.elo;
+    me.wins = getTotalWins(); me.streak = getStreak(); me.elo = playerElo; me.tier = getPlayerTier().id;
+  }
   leaderboard.sort((a,b) => b.elo - a.elo);
+  savePlayerData();
+}
+function getPlayerRank(){
+  const idx = leaderboard.findIndex(e => !e.isBot);
+  return idx >= 0 ? idx + 1 : leaderboard.length;
 }
 
 // ─── DAILY CHALLENGE SYSTEM ───
@@ -207,6 +368,7 @@ function addBPXP(amount){
     if(t.type==='arena'&&t.reward.includes('Swamp')&&!unlockedArenas.includes('swamp')) unlockedArenas.push('swamp');
     if(t.type==='arena'&&t.reward.includes('Rooftop')&&!unlockedArenas.includes('rooftop')) unlockedArenas.push('rooftop');
   }
+  savePlayerData();
   return bpTier - oldTier; // tiers gained
 }
 
@@ -299,8 +461,10 @@ const LS_WINS = 'crocClashTotalWins', LS_STREAK = 'crocClashStreak';
 let _memWins=0, _memStreak=0;
 function getTotalWins(){ return _memWins; }
 function getStreak(){ return _memStreak; }
-function addWin(){ _memWins++; _memStreak++; return {wins:_memWins,streak:_memStreak}; }
-function resetStreak(){ _memStreak=0; }
+function addWin(){ _memWins++; _memStreak++; if(_memStreak>_bestStreak)_bestStreak=_memStreak; savePlayerData(); return {wins:_memWins,streak:_memStreak}; }
+function resetStreak(){ _memStreak=0; _memLosses++; savePlayerData(); }
+// Now that _memWins/_memStreak exist, restore saved data
+restorePlayerData();
 
 // ─── IMAGE LOADING ───
 const images = {};
@@ -3965,6 +4129,7 @@ function endMatchInner(w){
   const winner = isAI ? (w===p1?'p1':'ai') : (w===p1?'p1':'p2');
   const won = winner==='p1'||(!isAI&&winner==='p2');
   const eloDelta = eloChange(won);
+  addMatchResult(won, eloDelta, currentArena.id);
   if(won){
     const {wins,streak} = addWin();
     // Battle pass XP: 50 base + 20 per round won + 30 for perfect
@@ -4172,7 +4337,16 @@ function updateTitleStreak(){
   if(streak>0){el.textContent=`🔥 ${streak} WIN STREAK`; el.style.display='block';}
   else{el.textContent='';el.style.display='none';}
   const twEl=$('title-totalwins');
-  if(twEl) twEl.textContent = wins>0 ? `${wins} Total Wins` : '';
+  if(twEl){
+    const tier = getPlayerTier();
+    const rank = getPlayerRank();
+    const rankStr = rank > 0 && leaderboard.length > 1 ? ` • Rank #${rank}` : '';
+    if(wins > 0 || playerElo > 0){
+      twEl.innerHTML = `${tier.icon} ${tier.name} — ${playerElo} ELO${rankStr}<br><span style="font-size:11px;color:var(--mut)">${wins}W / ${_memLosses}L • Best Streak: ${_bestStreak}</span>`;
+    } else {
+      twEl.textContent = '';
+    }
+  }
 }
 
 // ─── LOADOUT SCREEN ───
@@ -4979,24 +5153,61 @@ function showLeaderboard(){
   initLeaderboard();
   const el = document.getElementById('leaderboard-screen');
   el.classList.remove('hidden'); el.style.display='flex';
+  const myRank = getPlayerRank();
+  const rankDiff = _prevRank > 0 ? _prevRank - myRank : 0; // positive = climbed
   // Render list
   const list = document.getElementById('lb-list');
-  list.innerHTML = leaderboard.slice(0,12).map((e,i) => {
+  list.innerHTML = leaderboard.slice(0,15).map((e,i) => {
     const tier = RANKED_TIERS.find(t=>t.id===e.tier)||RANKED_TIERS[0];
     const isMe = !e.isBot;
-    const bg = isMe ? 'rgba(255,215,64,.12)' : 'rgba(255,255,255,.03)';
-    const border = isMe ? '1px solid rgba(255,215,64,.3)' : '1px solid rgba(255,255,255,.05)';
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:${bg};border:${border}">
-      <span style="font-family:var(--fh);font-size:16px;color:${i<3?'var(--gold)':'var(--mut)'};min-width:28px">#${i+1}</span>
-      <span style="font-size:16px">${tier.icon}</span>
-      <span style="flex:1;font-family:var(--fh);font-size:14px;letter-spacing:.06em;${isMe?'color:var(--gold)':'color:var(--txt)'}">${e.name}</span>
-      <span style="font-family:var(--fh);font-size:12px;color:var(--mut)">${e.elo} ELO</span>
-      <span style="font-family:var(--fd);font-size:11px;color:var(--p1)">${e.wins}W</span>
+    const bg = isMe ? 'rgba(255,215,64,.12)' : i<3 ? 'rgba(255,215,64,.04)' : 'rgba(255,255,255,.03)';
+    const border = isMe ? '1.5px solid rgba(255,215,64,.4)' : '1px solid rgba(255,255,255,.05)';
+    const rankNum = i + 1;
+    const rankColor = rankNum===1?'#ffd740':rankNum===2?'#c0c0c0':rankNum===3?'#cd7f32':'var(--mut)';
+    const medal = rankNum===1?'🥇':rankNum===2?'🥈':rankNum===3?'🥉':'';
+    // Streak fire indicator
+    const streakStr = e.streak >= 3 ? `<span style="font-size:10px;color:#ff6a00">🔥${e.streak}</span>` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:${bg};border:${border};${isMe?'box-shadow:0 0 12px rgba(255,215,64,.15)':''}">
+      <span style="font-family:var(--fh);font-size:15px;color:${rankColor};min-width:30px;text-align:center">${medal||'#'+rankNum}</span>
+      <span style="font-size:15px">${tier.icon}</span>
+      <span style="flex:1;font-family:var(--fh);font-size:13px;letter-spacing:.06em;${isMe?'color:var(--gold);text-shadow:0 0 8px rgba(255,215,64,.3)':'color:var(--txt)'}">${e.name} ${streakStr}</span>
+      <span style="font-family:var(--fh);font-size:12px;color:${isMe?'var(--gold)':'var(--mut)'}">${e.elo}</span>
+      <span style="font-family:var(--fd);font-size:10px;color:var(--p1);min-width:24px">${e.wins}W</span>
     </div>`;
   }).join('');
-  document.getElementById('lb-season').textContent = SEASON_NAME + ' — Resets Sunday';
-  // Battle pass
+  // Season header with rank
+  const rankArrow = rankDiff > 0 ? `<span style="color:#4ade80">▲${rankDiff}</span>` : rankDiff < 0 ? `<span style="color:#f87171">▼${Math.abs(rankDiff)}</span>` : '';
+  document.getElementById('lb-season').innerHTML = `${SEASON_NAME} &mdash; Resets Sunday<br><span style="font-size:13px;color:var(--gold)">YOUR RANK: #${myRank} / ${leaderboard.length} ${rankArrow}</span>`;
+  // Career stats row
+  let careerHTML = `<div style="display:flex;gap:12px;justify-content:center;margin:8px 0 4px;flex-wrap:wrap">`;
+  careerHTML += `<div style="text-align:center"><div style="font-family:var(--fh);font-size:16px;color:var(--gold)">${playerElo}</div><div style="font-family:var(--fd);font-size:10px;color:var(--mut)">ELO</div></div>`;
+  careerHTML += `<div style="text-align:center"><div style="font-family:var(--fh);font-size:16px;color:var(--p1)">${_memWins}</div><div style="font-family:var(--fd);font-size:10px;color:var(--mut)">WINS</div></div>`;
+  careerHTML += `<div style="text-align:center"><div style="font-family:var(--fh);font-size:16px;color:#f87171">${_memLosses}</div><div style="font-family:var(--fd);font-size:10px;color:var(--mut)">LOSSES</div></div>`;
+  careerHTML += `<div style="text-align:center"><div style="font-family:var(--fh);font-size:16px;color:#ff6a00">${_bestStreak}</div><div style="font-family:var(--fd);font-size:10px;color:var(--mut)">BEST STREAK</div></div>`;
+  careerHTML += `<div style="text-align:center"><div style="font-family:var(--fh);font-size:16px;color:#a78bfa">${Math.max(_peakElo,playerElo)}</div><div style="font-family:var(--fd);font-size:10px;color:var(--mut)">PEAK ELO</div></div>`;
+  careerHTML += `</div>`;
+  // Match history
+  if(_matchHistory.length > 0){
+    careerHTML += `<div style="font-family:var(--fh);font-size:11px;letter-spacing:.1em;color:var(--mut);margin:8px 0 4px;text-align:center">RECENT MATCHES</div>`;
+    careerHTML += `<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap">`;
+    _matchHistory.slice(-10).forEach(m => {
+      const col = m.won ? '#4ade80' : '#f87171';
+      const sign = m.delta > 0 ? '+' : '';
+      careerHTML += `<div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--fh);background:${m.won?'rgba(74,222,128,.1)':'rgba(248,113,113,.1)'};border:1px solid ${col}40;color:${col}" title="${sign}${m.delta} ELO">${m.won?'W':'L'}</div>`;
+    });
+    careerHTML += `</div>`;
+  }
+  // Insert career stats before battle pass
   const bpProg = document.getElementById('bp-progress');
+  // Put career stats in its own container (create or reuse)
+  let careerEl = document.getElementById('lb-career');
+  if(!careerEl){
+    careerEl = document.createElement('div');
+    careerEl.id = 'lb-career';
+    bpProg.parentElement.insertBefore(careerEl, bpProg);
+  }
+  careerEl.innerHTML = careerHTML;
+  // Battle pass
   bpProg.innerHTML = BP_TIERS.map(t => {
     const done = bpTier >= t.tier;
     return `<div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:${done?'rgba(255,215,64,.2)':'rgba(255,255,255,.04)'};border:1px solid ${done?'rgba(255,215,64,.4)':'rgba(255,255,255,.06)'}" title="${t.reward}">${done?t.icon:'🔒'}</div>`;
