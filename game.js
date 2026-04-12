@@ -934,6 +934,9 @@ function codeToLabel(code){
 // ─── INPUT ───
 const keys = {}, jp = {};
 document.addEventListener('keydown', e => {
+  // Don't block typing in input fields (lobby code input, etc.)
+  const tag = e.target.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if(!keys[e.code]) jp[e.code]=true; keys[e.code]=true; e.preventDefault();
   // Buffer one-shot actions for online guest (so they're not lost between frames)
   if(typeof guestInputBuf!=='undefined'){
@@ -4286,11 +4289,10 @@ $('lobby-back').addEventListener('click',()=>{
   $('title-screen').classList.remove('hidden');
 });
 
-// Share invite link — open Messages / share sheet reliably in WebViews
+// Share invite link — copy link + show it visibly so user can share it
 $('lobby-share').addEventListener('click',()=>{
   const code = $('lobby-room-code')?.textContent?.trim();
   if(!code) return;
-  // Always point to the PWA on GitHub Pages, regardless of where the game is being played from
   const pwaBase = 'https://surfguy1985.github.io/croc-clash-server/';
   const url = pwaBase + '?room=' + code;
   const msg = '\uD83D\uDC0A Join my Croc Clash match! ' + url;
@@ -4301,23 +4303,22 @@ $('lobby-share').addEventListener('click',()=>{
     setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
     return;
   }
-  // Use a hidden <a> tag to trigger sms: scheme — this is the most reliable
-  // method in WebViews (in-app browsers) where navigator.share and window.open
-  // are often silently blocked. The <a> click is trusted as a user gesture.
-  const smsBody = encodeURIComponent(msg);
-  const a = document.createElement('a');
-  // iOS uses &body=, Android uses ?body= — sms:&body= works on both
-  a.href = 'sms:&body=' + smsBody;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Also copy link to clipboard as backup
-  if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard){
-    navigator.clipboard.writeText(url).then(()=>{
-      $('lobby-copied').textContent = '\u2705 Link also copied to clipboard!';
-      setTimeout(()=>{ $('lobby-copied').textContent=''; }, 5000);
-    }).catch(()=>{});
+  // Copy link to clipboard first
+  const copied = (typeof navigator.clipboard !== 'undefined' && navigator.clipboard)
+    ? navigator.clipboard.writeText(url).then(()=>true).catch(()=>false)
+    : Promise.resolve(false);
+  copied.then((ok)=>{
+    // Show the link visibly so user can long-press to copy or share manually
+    const el = $('lobby-copied');
+    if(ok){
+      el.innerHTML = '\u2705 Link copied!<br><span style="font-size:11px;color:var(--acc);word-break:break-all;user-select:all">' + url + '</span><br><span style="font-size:10px;color:var(--mut)">Paste in Messages to send to your friend</span>';
+    } else {
+      el.innerHTML = '\uD83D\uDD17 Send this link to your friend:<br><span style="font-size:11px;color:var(--acc);word-break:break-all;user-select:all">' + url + '</span><br><span style="font-size:10px;color:var(--mut)">Long-press to copy, then paste in Messages</span>';
+    }
+  });
+  // Also try native share sheet (works in Safari, some WebViews)
+  if(navigator.share){
+    navigator.share({ title:'Croc Clash', text: msg, url }).catch(()=>{});
   }
 });
 
