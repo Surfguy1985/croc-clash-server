@@ -61,7 +61,8 @@ const ARENAS = [
   { id:'rooftop',   name:'Neon Rooftop',     streakReq:3, unlock:'Win 3 in a row' },
 ];
 let currentArena = ARENAS[0];
-let unlockedArenas = ['boardwalk']; // earn others via win streaks
+let unlockedArenas = ['boardwalk'];
+let arenaProgressionIdx = 0; // current position in arena chain for progression mode // earn others via win streaks
 
 // ─── ARENA PLATFORMS (perch structures — walk past base, jump onto roof) ───
 const ARENA_PLATFORMS = {
@@ -763,11 +764,19 @@ function getKOVideo(winner){
   return getRotatedVid(winner === p1 ? 'ko_gary' : 'ko_carl');
 }
 
+let _activeVideoEl = null; // track which video element is currently the 'live' one
 function initVideoEl(el){
   if(!el) return;
   el.muted = true; el.playsInline = true; // muted for preload only, unmuted on play
-  el.addEventListener('ended', () => { if(!matchIntroPlaying) hideVideo(); });
-  el.addEventListener('error', () => { if(!matchIntroPlaying) hideVideo(); });
+  el.addEventListener('ended', () => {
+    // Only respect ended from the ACTIVE video element — ignore outgoing crossfade
+    if(el !== _activeVideoEl) return;
+    if(!matchIntroPlaying) hideVideo();
+  });
+  el.addEventListener('error', () => {
+    if(el !== _activeVideoEl) return;
+    if(!matchIntroPlaying) hideVideo();
+  });
   // All videos play to completion — no tap/click to dismiss
   el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
   el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); }, {passive:false});
@@ -831,21 +840,25 @@ function playSpecialVideo(category, duration, locked){
   incoming.style.display = 'block';
   incoming.style.pointerEvents = 'none'; // block all interaction during playback
 
+  _activeVideoEl = incoming; // mark this as the live element for ended/error events
   safePlay(incoming, src).then(ok => {
-    if(!ok){ incoming.style.display = 'none'; return; }
+    if(!ok){ incoming.style.display = 'none'; _activeVideoEl = null; return; }
     incoming.style.opacity = '1';
     // Crossfade out old video
     if(videoPlaying && outgoing.style.display !== 'none'){
       outgoing.style.opacity = '0';
       setTimeout(() => { outgoing.pause(); outgoing.style.display = 'none'; }, 400);
     }
+    // Use actual video duration for the safety timeout (not the passed estimate)
+    const realDur = incoming.duration;
+    const safetyMs = (realDur && isFinite(realDur)) ? (realDur * 1000 + 2000) : (duration + 3000);
+    if(videoTimeout) clearTimeout(videoTimeout);
+    videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, safetyMs);
   });
 
   activeVidSlot = (activeVidSlot === 'A') ? 'B' : 'A';
   videoPlaying = true;
   if(videoTimeout) clearTimeout(videoTimeout);
-  // Let the 'ended' event handle hide primarily; timeout is safety fallback with extra buffer
-  videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, duration + 3000);
 }
 
 function hideVideo(){
@@ -985,9 +998,9 @@ document.addEventListener('keyup', e => {
 });
 
 // Touch state — P1 (single-player controls + 2P P1 half)
-const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,rage:0};
+const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,power3:0,power4:0,rage:0};
 // Touch state — P2 (2P P2 half)
-const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,rage:0};
+const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,power3:0,power4:0,rage:0};
 
 // Single-player touch controls (no data-p attribute)
 document.querySelectorAll('#touch-controls .dpad-btn').forEach(b => {
@@ -2610,7 +2623,7 @@ function drawCroc(c){
 }
 
 // ─── CROC CONSTRUCTOR ───
-let loadout = { p1:{power1:'freeze',power2:'sax',skin:'default'}, p2:{power1:'lightning',power2:'shotgun',skin:'default'} };
+let loadout = { p1:{power1:'freeze',power2:'sax',power3:null,power4:null,skin:'default'}, p2:{power1:'lightning',power2:'shotgun',power3:null,power4:null,skin:'default'} };
 
 function mkCroc(x,face,name,charKey){
   return {x,y:FLOOR_Y-CH,vx:0,vy:0,w:CW,h:CH,face,name,charKey,skin:'default',
@@ -2631,8 +2644,8 @@ function mkCroc(x,face,name,charKey){
     dead:false,deathVx:0,deathVy:0,deathBounces:0,deathRot:0,deathRotV:0,
     bufAtk:false,bufParry:false,
     // Special powers
-    power1:'freeze',power2:'sax',
-    pow1CD:0,pow2CD:0,
+    power1:'freeze',power2:'sax',power3:null,power4:null,
+    pow1CD:0,pow2CD:0,pow3CD:0,pow4CD:0,
     // Buffs
     speedBoost:1,speedBoostT:0,
     shieldActive:false,
@@ -2673,7 +2686,7 @@ function resetC(c,x){
   c.comebackActive=false;c.comebackFlash=0;
   c.dead=false;c.deathVx=0;c.deathVy=0;c.deathBounces=0;c.deathRot=0;c.deathRotV=0;
   c.bufAtk=false;c.bufParry=false;
-  c.pow1CD=0;c.pow2CD=0;
+  c.pow1CD=0;c.pow2CD=0;c.pow3CD=0;c.pow4CD=0;
   c.speedBoost=1;c.speedBoostT=0;
   c.shieldActive=false;c.doubleDmg=false;
   c.rageSuperUsed=false;
@@ -2853,7 +2866,7 @@ function updateCroc(c,inp,o,dt){
   c.parryCD=Math.max(0,c.parryCD-dt);
   c.hitFlash=Math.max(0,c.hitFlash-dt);
   c.launchCD=Math.max(0,c.launchCD-dt);
-  c.pow1CD=Math.max(0,c.pow1CD-dt);
+  c.pow1CD=Math.max(0,c.pow1CD-dt);c.pow3CD=Math.max(0,c.pow3CD-dt);c.pow4CD=Math.max(0,c.pow4CD-dt);
   c.rageCD=Math.max(0,c.rageCD-dt);
   c.pow2CD=Math.max(0,c.pow2CD-dt);
   c.squash=lerp(c.squash,1,dt*10);
@@ -3083,6 +3096,14 @@ function updateCroc(c,inp,o,dt){
     const def=POWERS[c.power2];
     if(def){ c.pow2CD=def.cd; useSpecialPower(c,o,c.power2); }
   }
+  if(inp.power3&&c.power3&&c.pow3CD<=0&&!c.parrying){
+    const def=POWERS[c.power3];
+    if(def){ c.pow3CD=def.cd; useSpecialPower(c,o,c.power3); }
+  }
+  if(inp.power4&&c.power4&&c.pow4CD<=0&&!c.parrying){
+    const def=POWERS[c.power4];
+    if(def){ c.pow4CD=def.cd; useSpecialPower(c,o,c.power4); }
+  }
 
   // Mutator gravity
   const gravMult = activeMutator.id === 'lowgrav' ? 0.4 : 1;
@@ -3220,13 +3241,30 @@ function getAI(ai,tgt){
                    (pow1Name==='mystery' && !mysteryBox) ? 0.008 : 0.006;
     if(Math.random()<chance) inp.power1=1;
   }
-  if(ai.pow2CD<=0&&!inp.power1){
+  if(ai.pow2CD<=0&&!inp.power1&&!inp.power3&&!inp.power4){
     const isRanged = rangedPowers.includes(pow2Name);
     const isMelee = meleePowers.includes(pow2Name);
     const chance = (isRanged && adx > 120 && adx < 450) ? 0.012*aggro :
                    (isMelee && adx < 200) ? 0.010*aggro :
                    (pow2Name==='mystery' && !mysteryBox) ? 0.006 : 0.005;
     if(Math.random()<chance) inp.power2=1;
+  }
+  // AI: use power3/power4 if available
+  if(ai.power3&&ai.pow3CD<=0&&!inp.power1&&!inp.power2){
+    const def3=POWERS[ai.power3];
+    if(def3){
+      let chance3=0.02;
+      if(dx<300) chance3=0.06;
+      if(Math.random()<chance3) inp.power3=1;
+    }
+  }
+  if(ai.power4&&ai.pow4CD<=0&&!inp.power1&&!inp.power2&&!inp.power3){
+    const def4=POWERS[ai.power4];
+    if(def4){
+      let chance4=0.02;
+      if(dx<300) chance4=0.06;
+      if(Math.random()<chance4) inp.power4=1;
+    }
   }
 
   // Rage — use more aggressively, especially when losing
@@ -3247,26 +3285,30 @@ function getAI(ai,tgt){
 // ─── GAME STATE ───
 let state='title',isAI=false,isOnline=false,amHost=false,p1,p2,roundTimer,roundNum,cdTimer,lastTS=0,gameTime=0,matchStats={};
 let pendingIsAI = false;
-let remoteInput = {left:false,right:false,up:false,down:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false,rage:false};
+let remoteInput = {left:false,right:false,up:false,down:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false,power3:false,power4:false,rage:false};
 
 // Buffer one-shot inputs for online guest so touch taps aren't missed between frames
-let guestInputBuf = {up:false,down:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false,rage:false};
+let guestInputBuf = {up:false,down:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false,power3:false,power4:false,rage:false};
 
 function initP(){
   p1=mkCroc(160,1,'Gator Gary','gary');
   p1.power1=loadout.p1.power1;
   p1.power2=loadout.p1.power2;
+  p1.power3=loadout.p1.power3;
+  p1.power4=loadout.p1.power4;
   p1.skin=loadout.p1.skin;
   p2=mkCroc(AW-160-CW,-1,'Croc Carl','carl');
   p2.power1=loadout.p2.power1;
   p2.power2=loadout.p2.power2;
+  p2.power3=loadout.p2.power3;
+  p2.power4=loadout.p2.power4;
   p2.skin=loadout.p2.skin;
 }
 function resetRound(){
   resetC(p1,160);resetC(p2,AW-160-CW);
   // Reapply loadout
-  p1.power1=loadout.p1.power1;p1.power2=loadout.p1.power2;p1.skin=loadout.p1.skin;
-  p2.power1=loadout.p2.power1;p2.power2=loadout.p2.power2;p2.skin=loadout.p2.skin;
+  p1.power1=loadout.p1.power1;p1.power2=loadout.p1.power2;p1.power3=loadout.p1.power3;p1.power4=loadout.p1.power4;p1.skin=loadout.p1.skin;
+  p2.power1=loadout.p2.power1;p2.power2=loadout.p2.power2;p2.power3=loadout.p2.power3;p2.power4=loadout.p2.power4;p2.skin=loadout.p2.skin;
   roundTimer=ROUND_TIME;
   parts.length=0;floats.length=0;projectiles.length=0;
   mysteryBox=null;
@@ -3412,29 +3454,221 @@ function endRound(w){
   if(w && !isMatchWin){
     const koVid = getKOVideo(w);
     hideVideo();
-    playSpecialVideo(koVid, 10500, true);
+    playSpecialVideo(koVid, 12000, true);
     // Broadcast video to guest
-    hostSendEvent({type:'video', src:koVid, dur:10500, locked:true});
+    hostSendEvent({type:'video', src:koVid, dur:12000, locked:true});
   }
-  // Advance after video (or immediately if match-winning round)
-  const advanceDelay = (w && !isMatchWin) ? 11500 : 2500;
-  setTimeout(()=>{
+  // Wait for video to fully finish before advancing
+  // Use a polling check instead of fixed timeout so we never cut a video short
+  function advanceAfterVideo(){
+    if(videoPlaying){
+      // Video still playing — check again in 500ms
+      setTimeout(advanceAfterVideo, 500);
+      return;
+    }
     hideVideo();
     hostSendEvent({type:'hideVideo'});
     if(isMatchWin) endMatch();
     else {
       roundNum++;
       startCD();
-      // Broadcast round start to guest
       hostSendEvent({type:'roundStart', cd:2.2, rn:roundNum});
       hostSendEvent({type:'sfx', name:'round'});
       hostSendEvent({type:'slam', text:'Round '+roundNum, color:'#ffd740', dur:1.5});
     }
-  }, advanceDelay);
+  }
+  // Start checking after minimum delay (2.5s for match win without video, or after video starts)
+  const minDelay = (w && !isMatchWin) ? 2000 : 2500;
+  setTimeout(advanceAfterVideo, minDelay);
 }
+// ─── ARENA PROGRESSION: TRANSITION + POWER UPGRADE ───
+function showArenaTransition(nextArena, onDone){
+  // Create an epic arena unlock transition overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'arena-transition';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:150;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(5,5,16,.96);opacity:0;transition:opacity .5s;pointer-events:all;';
+  overlay.innerHTML = `
+    <div style="text-align:center;transform:scale(0.8);transition:transform .6s cubic-bezier(.16,1,.3,1);">
+      <div style="font-family:var(--fh);font-size:clamp(1rem,3vw,1.4rem);color:#ffd740;letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px">ARENA UNLOCKED</div>
+      <div style="font-family:var(--fh);font-size:clamp(2rem,8vw,4rem);color:#fff;letter-spacing:.08em;line-height:1;text-shadow:0 0 40px rgba(255,215,64,.5),0 4px 0 rgba(0,0,0,.6);">${nextArena.name.toUpperCase()}</div>
+      <div style="margin-top:24px;font-family:var(--fh);font-size:clamp(1rem,3vw,1.6rem);color:#4ade80;letter-spacing:.15em;">⚡ POWER UPGRADE ⚡</div>
+      <div style="margin-top:8px;font-size:clamp(.85rem,2.5vw,1.1rem);color:rgba(255,255,255,.7);letter-spacing:.08em;">Choose 2 more powers for your arsenal</div>
+      <div style="margin-top:32px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap" id="arena-trans-stars">
+        <span style="font-size:2.5rem;animation:pipPop .5s ease .2s both">⭐</span>
+        <span style="font-size:2.5rem;animation:pipPop .5s ease .4s both">⭐</span>
+        <span style="font-size:2.5rem;animation:pipPop .5s ease .6s both">⭐</span>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  // Animate in
+  requestAnimationFrame(() => {
+    overlay.style.opacity = '1';
+    overlay.querySelector('div').style.transform = 'scale(1)';
+  });
+  // Auto-dismiss after 3.5s → show power upgrade loadout
+  setTimeout(() => {
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+      overlay.remove();
+      onDone();
+    }, 500);
+  }, 3500);
+}
+
+function showPowerUpgradeScreen(player, existingPowers, onDone){
+  // Show a power selection screen for picking 2 MORE powers (not duplicates)
+  const ls = $('loadout-screen');
+  if(!ls) { onDone(); return; }
+  const upgradeSel = {power3:null, power4:null};
+  const playerLabel = player==='p1' ? '🐊 GATOR GARY' : '🐊 CROC CARL';
+  const playerColor = player==='p1' ? '#4ade80' : '#f472b6';
+
+  function renderUpgrade(){
+    ls.innerHTML = `
+      <div class="lo-bg"></div>
+      <div class="lo-content glass">
+        <div class="lo-title" style="color:${playerColor}">⚡ ${playerLabel} POWER UP ⚡</div>
+        <div class="lo-subtitle">Choose 2 NEW Powers</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.5);letter-spacing:.06em;margin-bottom:8px">Current: ${existingPowers.map(p=>POWERS[p]?POWERS[p].icon+' '+POWERS[p].name:'').filter(Boolean).join(' • ')}</div>
+        <div class="lo-powers" id="lo-powers">
+          ${POWER_KEYS.filter(k => !existingPowers.includes(k)).map(k=>{
+            const def = POWERS[k];
+            const isSelected = upgradeSel.power3===k||upgradeSel.power4===k;
+            return `<div class="lo-power-card ${isSelected?'selected':''}" data-power="${k}">
+              <span class="lo-power-icon">${def.icon}</span>
+              <span class="lo-power-name">${def.name}</span>
+              <span class="lo-power-desc">${def.desc}</span>
+              <span class="lo-power-cd">${def.cd}s CD</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="lo-hint" id="lo-hint">${upgradeSel.power3&&upgradeSel.power4?'Ready!':'Select 2 new powers'}</div>
+        <button class="btn btn-primary lo-fight-btn" id="lo-fight" ${upgradeSel.power3&&upgradeSel.power4?'':'disabled'}>
+          ⚔️ CONTINUE FIGHT!
+        </button>
+      </div>
+    `;
+    // Wire up power cards
+    ls.querySelectorAll('.lo-power-card').forEach(card=>{
+      card.addEventListener('click',()=>{
+        const k=card.dataset.power;
+        if(upgradeSel.power3===k){ upgradeSel.power3=null; }
+        else if(upgradeSel.power4===k){ upgradeSel.power4=null; }
+        else if(!upgradeSel.power3){ upgradeSel.power3=k; }
+        else if(!upgradeSel.power4){ upgradeSel.power4=k; }
+        else { upgradeSel.power3=upgradeSel.power4; upgradeSel.power4=k; }
+        renderUpgrade();
+      });
+    });
+    // Wire up fight button
+    const fBtn = $('lo-fight');
+    if(fBtn) fBtn.addEventListener('click',()=>{
+      if(!upgradeSel.power3||!upgradeSel.power4) return;
+      onDone(upgradeSel.power3, upgradeSel.power4);
+    });
+  }
+
+  renderUpgrade();
+  ls.classList.remove('hidden');
+}
+
+function triggerArenaProgression(winner){
+  // Find next arena in sequence
+  const arenaOrder = ['boardwalk','swamp','rooftop'];
+  const curIdx = arenaOrder.indexOf(currentArena.id);
+  const nextIdx = curIdx + 1;
+
+  if(nextIdx >= arenaOrder.length){
+    // Beat all arenas! Show final victory
+    endMatchFinal(winner);
+    return;
+  }
+
+  const nextArena = ARENAS.find(a => a.id === arenaOrder[nextIdx]);
+  if(!nextArena){ endMatchFinal(winner); return; }
+
+  // Play KO video first
+  const koVid = getKOVideo(winner);
+  playSpecialVideo(koVid, 12000, true);
+  hostSendEvent({type:'video', src:koVid, dur:12000, locked:true});
+
+  // Wait for video to finish, then show transition
+  function afterVideo(){
+    if(videoPlaying){ setTimeout(afterVideo, 500); return; }
+    hideVideo();
+
+    // Unlock the next arena
+    if(!unlockedArenas.includes(nextArena.id)) unlockedArenas.push(nextArena.id);
+    currentArena = nextArena;
+    arenaProgressionIdx = nextIdx;
+
+    // Show arena transition
+    showArenaTransition(nextArena, () => {
+      // Show power upgrade screen (P1 only in AI mode)
+      const p1existing = [loadout.p1.power1, loadout.p1.power2].filter(Boolean);
+      if(loadout.p1.power3) p1existing.push(loadout.p1.power3);
+      if(loadout.p1.power4) p1existing.push(loadout.p1.power4);
+
+      showPowerUpgradeScreen('p1', p1existing, (pw3, pw4) => {
+        loadout.p1.power3 = pw3;
+        loadout.p1.power4 = pw4;
+
+        // AI gets random new powers too
+        if(isAI){
+          const aiAvail = POWER_KEYS.filter(k => k !== loadout.p2.power1 && k !== loadout.p2.power2);
+          loadout.p2.power3 = aiAvail[Math.floor(Math.random()*aiAvail.length)];
+          const aiAvail2 = aiAvail.filter(k => k !== loadout.p2.power3);
+          loadout.p2.power4 = aiAvail2[Math.floor(Math.random()*aiAvail2.length)];
+        }
+
+        // Hide loadout, reset for new arena match
+        $('loadout-screen').classList.add('hidden');
+        $('result-screen').classList.add('hidden');
+
+        // Reset crocs + apply all 4 powers
+        initP();
+        roundNum = 1;
+        matchStats = {p1h:0,p2h:0,p1c:0,p2c:0,p1p:0,p2p:0,rds:0};
+        updatePowerHUD();
+        if(isOnline) showTouchControls(false);
+        else showTouchControls(!isAI);
+        showKeyLegend();
+        playMatchIntro(() => startCD());
+      });
+    });
+  }
+  setTimeout(afterVideo, 2000);
+}
+
+// Original endMatch becomes endMatchFinal (called when all arenas beaten or for online)
+function endMatchFinal(winner){
+  // This is the actual final result screen
+  const w = winner || (p1.wins>=ROUNDS_TO_WIN?p1:p2);
+  endMatchInner(w);
+}
+
 function endMatch(){
   state='result';
   const w=p1.wins>=ROUNDS_TO_WIN?p1:p2;
+
+  // Check if we should progress to next arena (single player only)
+  if(isAI && w === p1){
+    // Player won! Check if there's a next arena
+    const arenaOrder = ['boardwalk','swamp','rooftop'];
+    const curIdx = arenaOrder.indexOf(currentArena.id);
+    if(curIdx < arenaOrder.length - 1){
+      // Trigger arena progression instead of ending
+      triggerArenaProgression(w);
+      return;
+    }
+  }
+
+  endMatchInner(w);
+}
+
+function endMatchInner(w){
+  state='result';
   const l=w===p1?p2:p1;
   const wc=w===p1?'var(--p1)':'var(--p2)';
   // Victory finisher text
@@ -3511,6 +3745,11 @@ function updatePowerHUD(){
   const p1p2btn = document.getElementById('touch-power2');
   if(p1p1btn&&p1){ const def=POWERS[p1.power1]; if(def){ p1p1btn.querySelector('.icon').textContent=def.icon; p1p1btn.querySelector('.plabel').textContent=def.name.split(' ')[0]; } }
   if(p1p2btn&&p1){ const def=POWERS[p1.power2]; if(def){ p1p2btn.querySelector('.icon').textContent=def.icon; p1p2btn.querySelector('.plabel').textContent=def.name.split(' ')[0]; } }
+  // Power 3/4 touch buttons
+  const p1p3btn = document.getElementById('touch-power3');
+  const p1p4btn = document.getElementById('touch-power4');
+  if(p1p3btn){ if(p1&&p1.power3){ const def=POWERS[p1.power3]; if(def){ p1p3btn.querySelector('.icon').textContent=def.icon; p1p3btn.querySelector('.plabel').textContent=def.name.split(' ')[0]; } p1p3btn.style.display=''; } else { p1p3btn.style.display='none'; } }
+  if(p1p4btn){ if(p1&&p1.power4){ const def=POWERS[p1.power4]; if(def){ p1p4btn.querySelector('.icon').textContent=def.icon; p1p4btn.querySelector('.plabel').textContent=def.name.split(' ')[0]; } p1p4btn.style.display=''; } else { p1p4btn.style.display='none'; } }
   // Update 2P touch power button labels
   const tp1p1 = document.getElementById('tp1-pow1');
   const tp1p2 = document.getElementById('tp1-pow2');
@@ -3565,6 +3804,9 @@ function updateHUD(){
   const p1def1=POWERS[p1?.power1]; const p1def2=POWERS[p1?.power2];
   hudSet('p1pow1','textContent', p1&&p1def1 ? `${p1def1.icon} ${p1.pow1CD>0?p1.pow1CD.toFixed(1)+'s':'READY'}` : '');
   hudSet('p1pow2','textContent', p1&&p1def2 ? `${p1def2.icon} ${p1.pow2CD>0?p1.pow2CD.toFixed(1)+'s':'READY'}` : '');
+  const p1def3=POWERS[p1?.power3]; const p1def4=POWERS[p1?.power4];
+  hudSet('p1pow3','textContent', p1&&p1def3 ? `${p1def3.icon} ${p1.pow3CD>0?p1.pow3CD.toFixed(1)+'s':'READY'}` : '');
+  hudSet('p1pow4','textContent', p1&&p1def4 ? `${p1def4.icon} ${p1.pow4CD>0?p1.pow4CD.toFixed(1)+'s':'READY'}` : '');
   // Rage cooldown
   const p1rc = p1 ? p1.rageCD : 0;
   hudSet('p1rage','textContent', p1rc>0 ? `💀 ${p1rc.toFixed(1)}s` : '💀 READY');
@@ -3595,6 +3837,8 @@ function getLocalP1(){
     launch:jp[b.launch]||ts.launch,
     power1:jp[b.power1]||ts.power1,
     power2:jp[b.power2]||ts.power2,
+    power3:ts.power3,
+    power4:ts.power4,
     rage:jp[b.rage]||ts.rage,
   };
 }
@@ -3611,6 +3855,8 @@ function getLocalP2(){
     launch:jp[b.launch]||ts2.launch,
     power1:jp[b.power1]||ts2.power1,
     power2:jp[b.power2]||ts2.power2,
+    power3:ts2.power3,
+    power4:ts2.power4,
     rage:jp[b.rage]||ts2.rage,
   };
 }
@@ -3672,8 +3918,8 @@ function updateTitleStreak(){
 // ─── LOADOUT SCREEN ───
 let loadoutPhase = 'p1'; // 'p1' | 'p2' | 'done'
 let loadoutSelections = {
-  p1:{power1:null,power2:null,skin:'default'},
-  p2:{power1:null,power2:null,skin:'default'},
+  p1:{power1:null,power2:null,power3:null,power4:null,skin:'default'},
+  p2:{power1:null,power2:null,power3:null,power4:null,skin:'default'},
 };
 
 function buildLoadoutScreen(){
@@ -4386,7 +4632,7 @@ $('btn-rematch').addEventListener('click',()=>{
     $('result-screen').classList.add('hidden');
     return;
   }
-  roundNum=1; startGame(isAI);
+  roundNum=1; arenaProgressionIdx=0; currentArena=ARENAS[0]; loadout.p1.power3=null; loadout.p1.power4=null; loadout.p2.power3=null; loadout.p2.power4=null; startGame(isAI);
 });
 $('btn-menu2').addEventListener('click',()=>{
   state='title';
@@ -4644,7 +4890,7 @@ function gameLoop(now){
     // Host: clear ONLY one-shot actions from remote input (NOT held directional keys)
     if(isOnline && amHost){
       remoteInput.up=false;remoteInput.down=false;remoteInput.attack=false;remoteInput.dash=false;
-      remoteInput.parry=false;remoteInput.launch=false;remoteInput.power1=false;remoteInput.power2=false;remoteInput.rage=false;
+      remoteInput.parry=false;remoteInput.launch=false;remoteInput.power1=false;remoteInput.power2=false;remoteInput.power3=false;remoteInput.power4=false;remoteInput.rage=false;
       hostBroadcastState(rawDt);
       updateNetPing(rawDt);
     }
@@ -4687,8 +4933,8 @@ function gameLoop(now){
 
   ctx.restore();
   for(const k in jp)delete jp[k];
-  ts.attack=0;ts.dash=0;ts.parry=0;ts.launch=0;ts.power1=0;ts.power2=0;ts.rage=0;
-  ts2.attack=0;ts2.dash=0;ts2.parry=0;ts2.launch=0;ts2.power1=0;ts2.power2=0;ts2.rage=0;
+  ts.attack=0;ts.dash=0;ts.parry=0;ts.launch=0;ts.power1=0;ts.power2=0;ts.power3=0;ts.power4=0;ts.rage=0;
+  ts2.attack=0;ts2.dash=0;ts2.parry=0;ts2.launch=0;ts2.power1=0;ts2.power2=0;ts2.power3=0;ts2.power4=0;ts2.rage=0;
 }
 
 // ─── BOOT ───
@@ -4917,5 +5163,6 @@ $('btn-reset-binds').addEventListener('click', () => {
 
 // Initial render
 updateControlsDisplay();
+
 
 })();
