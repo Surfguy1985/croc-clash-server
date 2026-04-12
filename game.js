@@ -3311,40 +3311,52 @@ function playMatchIntro(onDone){
     if(pp2) pp2.catch(() => { matchIntroPlaying=false; onDone(); });
   });
   activeVidSlot = (activeVidSlot === 'A') ? 'B' : 'A';
-  // Cross-dissolve: start fading at ~8s so the arena bleeds through
-  const fadeStart = 7800;
-  const totalDur  = 9800; // cleanup after fade complete
   if(videoTimeout) clearTimeout(videoTimeout);
-  matchIntroTimer = setTimeout(() => {
-    incoming.classList.add('intro-fade'); // switch to slow 1.5s transition
-    // Force reflow so the transition class takes effect
+
+  // Let the intro play ALL the way through — crossfade after natural end
+  function introCleanup(){
+    if(!matchIntroPlaying) return; // already cleaned up
+    incoming.classList.add('intro-fade'); // switch to slow 1.5s dissolve
     void incoming.offsetWidth;
-    incoming.style.opacity = '0'; // triggers the 1.5s CSS dissolve
-  }, fadeStart);
-  // Also hide on natural video end (if shorter than expected)
+    incoming.style.opacity = '0';
+    // After dissolve completes, remove video and start gameplay
+    matchIntroCleanup = setTimeout(() => {
+      incoming.pause();
+      incoming.classList.remove('intro-fade');
+      incoming.style.display = 'none';
+      incoming.style.opacity = '0';
+      incoming.removeAttribute('src');
+      incoming.load();
+      videoPlaying = false; videoLocked = false;
+      matchIntroPlaying = false;
+      matchIntroTimer = null; matchIntroCleanup = null;
+      unmuteCrowd();
+      onDone();
+    }, 1800); // wait for 1.5s CSS dissolve + buffer
+  }
+
+  // When the video ends naturally, crossfade out
   const onEnd = () => {
     incoming.removeEventListener('ended', onEnd);
-    if(matchIntroPlaying){
-      incoming.classList.add('intro-fade');
-      void incoming.offsetWidth;
-      incoming.style.opacity = '0';
-    }
+    introCleanup();
   };
   incoming.addEventListener('ended', onEnd);
-  // After crossfade completes, clean up and start gameplay
-  matchIntroCleanup = setTimeout(() => {
-    incoming.pause();
-    incoming.classList.remove('intro-fade');
-    incoming.style.display = 'none';
-    incoming.style.opacity = '0';
-    incoming.removeAttribute('src');
-    incoming.load();
-    videoPlaying = false; videoLocked = false;
-    matchIntroPlaying = false;
-    matchIntroTimer = null; matchIntroCleanup = null;
-    unmuteCrowd(); // bring crowd back for gameplay
-    onDone();
-  }, totalDur);
+
+  // Safety fallback: if video duration is known, schedule cleanup after full duration + buffer
+  // (handles edge case where 'ended' event doesn't fire)
+  const checkDur = () => {
+    const dur = incoming.duration;
+    if(dur && isFinite(dur) && dur > 0){
+      matchIntroTimer = setTimeout(() => {
+        incoming.removeEventListener('ended', onEnd);
+        introCleanup();
+      }, dur * 1000 + 500); // full duration + 500ms buffer
+    } else {
+      // Duration not ready yet, check again
+      setTimeout(checkDur, 200);
+    }
+  };
+  setTimeout(checkDur, 100);
 }
 function startCD(){
   resetRound();state='countdown';cdTimer=2.2;
@@ -4516,7 +4528,7 @@ function tryStartOnlineMatch(){
     // Host runs the authoritative game simulation
     startGame(false);
     // Broadcast match intro video + first round start to guest
-    hostSendEvent({type:'video', src:'video/match-intro.mp4', dur:6000, locked:false});
+    hostSendEvent({type:'video', src:'video/match-intro.mp4', dur:11000, locked:false});
     // Broadcast first round start after intro delay
     setTimeout(() => {
       hostSendEvent({type:'roundStart', cd:2.2, rn:1});
