@@ -827,6 +827,11 @@ async function safePlay(el, src){
 function playSpecialVideo(category, duration, locked){
   duration = duration || 2000;
   if(!videoEl || !videoElB) return;
+  // Locked videos (KO / round-end / match-end) ALWAYS play, overriding any current video
+  if(locked && videoPlaying){
+    // Force-stop current video so the locked one can take over
+    hideVideoImmediate();
+  }
   if(videoPlaying && videoLocked) return;
   if(!locked && videoCooldown > 0) return;
   muteCrowd(); // silence crowd ambience during video so audio is clean
@@ -851,10 +856,30 @@ function playSpecialVideo(category, duration, locked){
       setTimeout(() => { outgoing.pause(); outgoing.style.display = 'none'; }, 400);
     }
     // Use actual video duration for the safety timeout (not the passed estimate)
-    const realDur = incoming.duration;
-    const safetyMs = (realDur && isFinite(realDur)) ? (realDur * 1000 + 2000) : (duration + 3000);
-    if(videoTimeout) clearTimeout(videoTimeout);
-    videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, safetyMs);
+    // Poll for duration since it may not be available immediately after play()
+    function setSafetyTimeout(){
+      const realDur = incoming.duration;
+      if(realDur && isFinite(realDur) && realDur > 0.5){
+        const safetyMs = realDur * 1000 + 2000;
+        if(videoTimeout) clearTimeout(videoTimeout);
+        videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, safetyMs);
+      } else {
+        // Duration not available yet — retry shortly, or fallback after 1s
+        setTimeout(() => {
+          const d2 = incoming.duration;
+          if(d2 && isFinite(d2) && d2 > 0.5){
+            const ms2 = d2 * 1000 + 2000;
+            if(videoTimeout) clearTimeout(videoTimeout);
+            videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, ms2);
+          } else {
+            // Absolute fallback
+            if(videoTimeout) clearTimeout(videoTimeout);
+            videoTimeout = setTimeout(() => { if(videoPlaying) hideVideo(); }, duration + 3000);
+          }
+        }, 500);
+      }
+    }
+    setSafetyTimeout();
   });
 
   activeVidSlot = (activeVidSlot === 'A') ? 'B' : 'A';
@@ -3672,13 +3697,19 @@ function endMatchInner(w){
     gridHTML: $('res-grid').innerHTML,
     delay: 11500
   });
-  // Wait for the KO video to finish before showing anything
-  const videoDelay = 11000;
-  setTimeout(() => {
+  // Wait for the KO video to ACTUALLY finish before showing result screen
+  // Poll videoPlaying instead of hardcoded timeout so we never cut off a video
+  function showResultAfterVideo(){
+    if(videoPlaying){
+      setTimeout(showResultAfterVideo, 500);
+      return;
+    }
     slam(finisher, wc, 2);
     hostSendEvent({type:'slam', text:finisher, color:wc, dur:2});
-  }, videoDelay);
-  setTimeout(() => { $('result-screen').classList.remove('hidden'); }, videoDelay + 500);
+    setTimeout(() => { $('result-screen').classList.remove('hidden'); }, 500);
+  }
+  // Start polling after a minimum 2s delay (video needs time to start)
+  setTimeout(showResultAfterVideo, 2000);
 
   // Win tracking + ELO + Battle Pass + Streak rewards
   const winner = isAI ? (w===p1?'p1':'ai') : (w===p1?'p1':'p2');
