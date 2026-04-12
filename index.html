@@ -271,8 +271,8 @@
 
     .tdpad{position:relative;width:120px;height:120px;flex-shrink:0}
     .dpad-ring{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.08);box-shadow:0 0 20px rgba(0,0,0,.4) inset}
-    .dpad-btn{position:absolute;width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;box-shadow:0 2px 8px rgba(0,0,0,.3),0 1px 0 rgba(255,255,255,.08) inset;transition:all .1s ease}
-    .dpad-btn:active{background:rgba(255,255,255,.18);transform:scale(.92)}
+    .dpad-btn{position:absolute;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;will-change:opacity}
+    .dpad-btn:active{background:rgba(255,255,255,.22);opacity:.85}
     .dpad-btn.up{top:0;left:50%;transform:translateX(-50%)}
     .dpad-btn.down{bottom:0;left:50%;transform:translateX(-50%)}
     .dpad-btn.left{left:0;top:50%;transform:translateY(-50%)}
@@ -285,10 +285,9 @@
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
       -webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;
       border:none;color:#fff;position:relative;overflow:hidden;
-      box-shadow:0 2px 8px rgba(0,0,0,.3),0 1px 0 rgba(255,255,255,.1) inset;
-      transition:all .1s ease;
+      will-change:opacity;
     }
-    .abtn:active{transform:scale(.9)}
+    .abtn:active{opacity:.8}
     .abtn .icon{font-size:16px;line-height:1}
     .abtn .plabel{font-size:8px;letter-spacing:.03em;opacity:.85}
     .abtn.at{background:linear-gradient(135deg,rgba(239,68,68,.4),rgba(220,38,38,.5))}
@@ -378,7 +377,7 @@
       <button class="btn" id="btn-install" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(168,85,247,.5));padding:14px 28px;margin-top:10px;font-size:1.1rem;letter-spacing:.06em;border:2px solid rgba(168,85,247,.6)">📲 INSTALL APP</button>
       <div class="tkeys" id="controls-display"></div>
       <button class="btn" id="btn-controls" style="background:linear-gradient(135deg,rgba(59,130,246,.35),rgba(99,102,241,.45));padding:10px 22px;margin-top:6px;font-size:.85rem;letter-spacing:.06em;border:2px solid rgba(99,102,241,.5)">🎮 CUSTOMIZE CONTROLS</button>
-      <div class="tver">V11.0 — ONLINE MULTIPLAYER</div>
+      <div class="tver">V12.0 — MOBILE PERFORMANCE</div>
     </div>
   </div>
 
