@@ -298,6 +298,7 @@ let imagesLoaded = 0;
 // Critical images — loaded before game starts
 const IMAGE_LIST = [
   ['arena','arena-bg.webp'],
+  ['arenaSwamp','arena-swamp-bg.webp'],
   ['gary','gary-sprite-lg.webp'],
   ['carl','carl-sprite-lg.webp'],
   ['garyCU','gary-closeup.webp'],
@@ -2033,146 +2034,43 @@ function drawArenaBoardwalk(t){
 
 // ─── ARENA: SWAMP MIDNIGHT ───
 function drawArenaSwamp(t){
-  // Mobile: simplified swamp — solid bg + minimal detail
-  if(PERF_LOW){
-    ctx.fillStyle='#061218';ctx.fillRect(0,0,AW,AH);
-    // Simple floor
-    ctx.fillStyle='rgba(10,50,25,.5)';ctx.fillRect(0,FLOOR_Y-10,AW,AH-FLOOR_Y+10);
-    // Stump platform (simplified)
-    const stp=ARENA_PLATFORMS.swamp[0];
-    ctx.fillStyle='#4a3520';ctx.fillRect(stp.x,stp.y,stp.w,stp.h);
-    ctx.fillStyle='#2a1a0a';ctx.fillRect(stp.x+stp.w/2-25,stp.y+stp.h,50,FLOOR_Y-stp.y-stp.h);
-    return;
-  }
-  // Deep swamp gradient
-  const sg=ctx.createLinearGradient(0,0,0,AH);
-  sg.addColorStop(0,'#020812');sg.addColorStop(.3,'#061218');sg.addColorStop(.6,'#0a1f12');sg.addColorStop(1,'#0d2818');
-  ctx.fillStyle=sg;ctx.fillRect(0,0,AW,AH);
-  // Moon
-  ctx.save();
-  const moonX=AW*0.8, moonY=AH*0.15, moonR=35;
-  ctx.globalAlpha=0.15;ctx.fillStyle='#c4f0ff';ctx.beginPath();ctx.arc(moonX,moonY,moonR+40,0,TAU);ctx.fill();
-  ctx.globalAlpha=0.9;
-  const mg=ctx.createRadialGradient(moonX,moonY,moonR*0.3,moonX,moonY,moonR);
-  mg.addColorStop(0,'#f0f8ff');mg.addColorStop(0.7,'#c4e0f0');mg.addColorStop(1,'#8ab4c8');
-  ctx.fillStyle=mg;ctx.beginPath();ctx.arc(moonX,moonY,moonR,0,TAU);ctx.fill();
-  ctx.restore();
-  // Stars (fewer, dimmer, greenish tint)
-  ctx.save();
-  for(let i=0;i<18;i++){
-    const sx=(i*47.3+20)%AW, sy=(i*23.1+8)%(AH*.28);
-    const tw=.08+Math.sin(t*(0.5+i*0.05)+i*3)*.15+.12;
-    ctx.globalAlpha=tw;ctx.fillStyle=i%3===0?'#aaffcc':'#ddeeff';
-    ctx.beginPath();ctx.arc(sx,sy,rand(.4,1.4),0,TAU);ctx.fill();
-  }
-  ctx.globalAlpha=1;ctx.restore();
-  // Fireflies
-  ctx.save();
-  for(let i=0;i<12;i++){
-    const fx=AW*0.1+((Math.sin(t*0.3+i*2.1)*0.4+0.5)*AW*0.8);
-    const fy=FLOOR_Y-80+Math.sin(t*0.7+i*1.7)*40;
-    const fa=0.2+Math.sin(t*2+i*4)*0.4;
-    if(fa>0){
-      ctx.globalAlpha=fa*0.7;ctx.fillStyle='#4ade80';
-      ctx.beginPath();ctx.arc(fx,fy,2.5,0,TAU);ctx.fill();
-      ctx.globalAlpha=fa*0.25;ctx.fillStyle='#4ade80';
-      ctx.beginPath();ctx.arc(fx,fy,10,0,TAU);ctx.fill();
+  // Draw background image (covers full canvas)
+  if(images.arenaSwamp){
+    ctx.drawImage(images.arenaSwamp, 0,0,AW,AH);
+  } else {
+    // Fallback: deep swamp gradient
+    if(PERF_LOW){
+      ctx.fillStyle='#061218';ctx.fillRect(0,0,AW,AH);
+    } else {
+      const sg=ctx.createLinearGradient(0,0,0,AH);
+      sg.addColorStop(0,'#020812');sg.addColorStop(.3,'#061218');sg.addColorStop(.6,'#0a1f12');sg.addColorStop(1,'#0d2818');
+      ctx.fillStyle=sg;ctx.fillRect(0,0,AW,AH);
     }
   }
-  ctx.restore();
-  // Swamp water
-  ctx.save();
-  const wg=ctx.createLinearGradient(0,FLOOR_Y-20,0,AH);
-  wg.addColorStop(0,'rgba(10,40,20,.0)');wg.addColorStop(0.3,'rgba(10,50,25,.4)');wg.addColorStop(1,'rgba(5,30,15,.8)');
-  ctx.fillStyle=wg;ctx.fillRect(0,FLOOR_Y-20,AW,AH-FLOOR_Y+20);
-  // Ripples
-  for(let i=0;i<5;i++){
-    const rx=(i*200+Math.sin(t*0.2+i)*30)%AW;
-    const ry=FLOOR_Y+10+i*6;
-    ctx.globalAlpha=0.15+Math.sin(t+i*2)*0.08;
-    ctx.strokeStyle='rgba(74,222,128,.25)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.ellipse(rx,ry,40+Math.sin(t*0.5+i)*10,4,0,0,TAU);ctx.stroke();
+  // Fireflies (animated over the image)
+  if(!PERF_LOW){
+    ctx.save();
+    for(let i=0;i<10;i++){
+      const fx=AW*0.08+((Math.sin(t*0.3+i*2.1)*0.4+0.5)*AW*0.84);
+      const fy=FLOOR_Y-120+Math.sin(t*0.7+i*1.7)*60;
+      const fa=0.2+Math.sin(t*2+i*4)*0.4;
+      if(fa>0){
+        ctx.globalAlpha=fa*0.8;ctx.fillStyle='#4ade80';
+        ctx.beginPath();ctx.arc(fx,fy,2,0,TAU);ctx.fill();
+        ctx.globalAlpha=fa*0.2;ctx.fillStyle='#4ade80';
+        ctx.beginPath();ctx.arc(fx,fy,9,0,TAU);ctx.fill();
+      }
+    }
+    ctx.restore();
   }
-  ctx.restore();
-  // Mist
-  ctx.save();ctx.globalAlpha=.08+Math.sin(t*.3)*.04;
-  const mist=ctx.createLinearGradient(0,FLOOR_Y-100,0,FLOOR_Y+20);
-  mist.addColorStop(0,'transparent');mist.addColorStop(0.5,'rgba(100,200,120,.15)');mist.addColorStop(1,'rgba(50,120,60,.1)');
-  ctx.fillStyle=mist;ctx.fillRect(0,FLOOR_Y-100,AW,120);
-  ctx.restore();
-
-  // ─── MOSSY TREE STUMP PERCH ───
-  const stp = ARENA_PLATFORMS.swamp[0];
-  const stpX = stp.x, stpTop = stp.y, stpW = stp.w;
-  ctx.save();
-  // Trunk (gnarled, dark wood)
-  const trunkW = stpW * 0.55;
-  const trunkX = stpX + stpW/2 - trunkW/2;
-  const trG = ctx.createLinearGradient(trunkX, stpTop, trunkX + trunkW, stpTop);
-  trG.addColorStop(0, '#2a1a0a'); trG.addColorStop(0.3, '#3d2a14'); trG.addColorStop(0.7, '#3d2a14'); trG.addColorStop(1, '#1f1208');
-  ctx.fillStyle = trG;
-  // Slightly tapered trunk shape
-  ctx.beginPath();
-  ctx.moveTo(trunkX + 8, stpTop + stp.h);
-  ctx.lineTo(trunkX - 4, FLOOR_Y);
-  ctx.lineTo(trunkX + trunkW + 4, FLOOR_Y);
-  ctx.lineTo(trunkX + trunkW - 8, stpTop + stp.h);
-  ctx.closePath(); ctx.fill();
-  // Bark texture lines
-  ctx.strokeStyle = 'rgba(80,50,20,.3)'; ctx.lineWidth = 1;
-  for(let bi = 0; bi < 5; bi++){
-    const bx = trunkX + 6 + bi * (trunkW - 12) / 4;
-    ctx.beginPath(); ctx.moveTo(bx, stpTop + stp.h + 10); ctx.lineTo(bx - 2, FLOOR_Y - 5); ctx.stroke();
+  // Subtle mist overlay near floor
+  if(!PERF_LOW){
+    ctx.save();ctx.globalAlpha=.06+Math.sin(t*.3)*.03;
+    const mist=ctx.createLinearGradient(0,FLOOR_Y-80,0,FLOOR_Y+20);
+    mist.addColorStop(0,'transparent');mist.addColorStop(0.5,'rgba(100,200,120,.12)');mist.addColorStop(1,'rgba(50,120,60,.08)');
+    ctx.fillStyle=mist;ctx.fillRect(0,FLOOR_Y-80,AW,100);
+    ctx.restore();
   }
-  // Exposed roots at base
-  ctx.strokeStyle = '#3d2a14'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(trunkX - 4, FLOOR_Y - 3); ctx.quadraticCurveTo(trunkX - 25, FLOOR_Y - 15, trunkX - 35, FLOOR_Y + 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(trunkX + trunkW + 4, FLOOR_Y - 3); ctx.quadraticCurveTo(trunkX + trunkW + 30, FLOOR_Y - 12, trunkX + trunkW + 40, FLOOR_Y + 3); ctx.stroke();
-  // Flat top (the stump surface — landing platform)
-  ctx.fillStyle = '#4a3520';
-  ctx.beginPath();
-  ctx.ellipse(stpX + stpW/2, stpTop + stp.h/2, stpW/2 + 10, stp.h/2 + 4, 0, 0, TAU);
-  ctx.fill();
-  // Tree rings on stump top
-  ctx.strokeStyle = 'rgba(80,60,30,.4)'; ctx.lineWidth = 1;
-  for(let ri = 1; ri <= 3; ri++){
-    ctx.beginPath();
-    ctx.ellipse(stpX + stpW/2, stpTop + stp.h/2, ri * 18, ri * 3, 0, 0, TAU);
-    ctx.stroke();
-  }
-  // Moss patches (green on top and sides)
-  ctx.fillStyle = 'rgba(74,222,128,.35)';
-  ctx.beginPath(); ctx.ellipse(stpX + stpW * 0.3, stpTop + 2, 22, 6, -0.2, 0, TAU); ctx.fill();
-  ctx.fillStyle = 'rgba(50,180,100,.3)';
-  ctx.beginPath(); ctx.ellipse(stpX + stpW * 0.75, stpTop + 4, 18, 5, 0.3, 0, TAU); ctx.fill();
-  // Hanging moss/vines on left side
-  ctx.strokeStyle = 'rgba(74,222,128,.25)'; ctx.lineWidth = 2;
-  for(let vi = 0; vi < 3; vi++){
-    const vx = stpX + 10 + vi * 20;
-    const vLen = 25 + Math.sin(t * 0.5 + vi) * 8;
-    ctx.beginPath();
-    ctx.moveTo(vx, stpTop + stp.h + 5);
-    ctx.quadraticCurveTo(vx - 8 + Math.sin(t * 0.4 + vi) * 4, stpTop + stp.h + vLen/2, vx - 3, stpTop + stp.h + vLen);
-    ctx.stroke();
-  }
-  // Small mushrooms growing on stump
-  const mushCols = ['#ff6b6b','#ffd740','#c084fc'];
-  for(let mi = 0; mi < 3; mi++){
-    const mx = stpX + 15 + mi * (stpW - 30)/2;
-    const my = stpTop + stp.h + 30 + mi * 25;
-    ctx.fillStyle = mushCols[mi]; ctx.beginPath(); ctx.ellipse(mx, my - 5, 6, 4, 0, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = '#e8dcc8'; ctx.fillRect(mx - 2, my - 5, 4, 10);
-  }
-  // Ambient firefly near stump
-  const ffA = 0.3 + Math.sin(t * 2.5) * 0.3;
-  if(ffA > 0){
-    ctx.globalAlpha = ffA; ctx.fillStyle = '#4ade80';
-    ctx.beginPath(); ctx.arc(stpX + stpW + 20 + Math.sin(t * 0.6) * 12, stpTop - 10 + Math.sin(t * 0.8) * 15, 2, 0, TAU); ctx.fill();
-    ctx.globalAlpha = ffA * 0.3;
-    ctx.beginPath(); ctx.arc(stpX + stpW + 20 + Math.sin(t * 0.6) * 12, stpTop - 10 + Math.sin(t * 0.8) * 15, 8, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
 }
 
 // ─── ARENA: NEON ROOFTOP ───
