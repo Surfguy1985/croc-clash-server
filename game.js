@@ -21,7 +21,7 @@ const ROUND_TIME = 45, ROUNDS_TO_WIN = 2;
 
 // ─── FIGHTERS (triple size) ───
 const CW = 280, CH = 400;
-const MOVE_SPD = 220, GRAVITY = 320, JUMP_VEL = -920;
+const MOVE_SPD = 220, GRAVITY = 480, JUMP_VEL = -920;
 const ATK_RANGE = 200, ATK_CD = 0.35;
 const DASH_SPD = 580, DASH_DUR = 0.18, DASH_CD = 0.7;
 const TAIL_RANGE = 240, TAIL_CD = 1.4;
@@ -891,6 +891,9 @@ function hideVideoImmediate(){
 // ─── CANVAS ───
 const canvas = document.getElementById('gc'), ctx = canvas.getContext('2d');
 let W, H, sc, ox, oy;
+// baseSc is the "resting" scale computed at resize; dynSc is the current
+// (possibly zoomed-out) scale used by the renderer.
+let baseSc = 1, dynSc = 1;
 function resize(){
   W=innerWidth; H=innerHeight;
   // Mobile: cap canvas resolution to reduce fill rate (max 720p equivalent)
@@ -904,26 +907,29 @@ function resize(){
     const rW = canvas.width, rH = canvas.height;
     sc = Math.min(rW/AW, rH/AH);
     ox = (rW - AW*sc)/2;
-    oy = (rH - AH*sc)/2;
+    // Anchor game to BOTTOM of screen
+    oy = rH - AH*sc;
   } else {
     canvas.width=W; canvas.height=H;
-    // Fit entire 960x540 game area on screen with guaranteed margin
-    // so nothing gets cut off by browser chrome or toolbars
-    const pad = 4; // minimal breathing room (px)
+    const pad = 4;
     sc = Math.min((W - pad*2)/AW, (H - pad*2)/AH);
     ox = (W - AW*sc)/2;
-    oy = (H - AH*sc)/2;
+    // Anchor game to BOTTOM of screen
+    oy = H - AH*sc;
   }
+  baseSc = sc;
+  dynSc = sc;
   // Position HTML HUD to align with the game area edges
   const hud = document.getElementById('hud');
   const legend = document.getElementById('key-legend');
   if(hud){
-    hud.style.top = Math.max(0, Math.floor(oy)) + 'px';
+    // HUD near top of game area — use a small offset from game top
+    hud.style.top = Math.max(0, Math.floor(oy) + 2) + 'px';
     hud.style.left = Math.max(0, Math.floor(ox)) + 'px';
     hud.style.right = Math.max(0, Math.floor(ox)) + 'px';
   }
   if(legend){
-    legend.style.bottom = Math.max(4, Math.floor(oy) + 4) + 'px';
+    legend.style.bottom = '4px';
     legend.style.left = Math.max(0, Math.floor(ox)) + 'px';
     legend.style.right = Math.max(0, Math.floor(ox)) + 'px';
   }
@@ -1847,25 +1853,35 @@ let trauma=0,shX=0,shY=0,shT=0;
 function addTrauma(t){trauma=clamp(trauma+t,0,1)}
 function updateShake(dt){shT+=dt*22;trauma=Math.max(0,trauma-TRAUMA_DECAY*dt);const m=trauma*trauma;shX=noise1D(shT)*m*22;shY=noise1D(shT+100)*m*22}
 
-// ─── CAMERA FOLLOW (vertical) ───
-let camY = 0; // current camera Y offset (arena coords, negative = look up)
-const CAM_THRESHOLD = FLOOR_Y - 200; // start following when character above this Y
-const CAM_LERP = 4; // smoothing speed
-const CAM_MAX = 220; // max upward shift in arena coords
+// ─── CAMERA: ZOOM-OUT SYSTEM (bottom-anchored) ───
+// When characters jump above the visible arena, the camera zooms OUT
+// (reduces scale) while keeping the floor pinned at the bottom of the
+// screen. When they land, it smoothly zooms back to normal.
+let camY = 0; // kept at 0 — no vertical panning
+let camZoom = 1; // 1 = normal, <1 = zoomed out
+const CAM_ZOOM_LERP = 3.5; // smoothing speed
+const CAM_ZOOM_MARGIN = 60; // extra px above character to keep visible
 
 function updateCamera(dt){
-  if(!p1 || !p2 || state === 'title') { camY = 0; return; }
-  // Find highest character Y (lowest value = highest on screen)
-  const highestY = Math.min(p1.y, p2.y);
-  let targetY = 0;
-  if(highestY < CAM_THRESHOLD){
-    // How far above threshold
-    targetY = Math.min(CAM_THRESHOLD - highestY, CAM_MAX);
+  if(!p1 || !p2 || state === 'title') { camZoom = 1; camY = 0; return; }
+  camY = 0; // never pan
+  // Find the highest point any character reaches (lowest Y value)
+  const highestY = Math.min(p1.y, p2.y) - CAM_ZOOM_MARGIN;
+  let targetZoom = 1;
+  if(highestY < 0){
+    // Character is above the arena top edge (y<0).
+    // We need the arena + the extra headroom to fit.
+    // Total world height needed = AH + |highestY| = AH - highestY
+    targetZoom = AH / (AH - highestY);
+    // Clamp so we don't zoom out absurdly far
+    targetZoom = Math.max(targetZoom, 0.45);
   }
-  // Smooth lerp toward target
-  camY += (targetY - camY) * Math.min(1, CAM_LERP * dt);
-  // Snap to 0 when very close
-  if(Math.abs(camY) < 0.5 && targetY === 0) camY = 0;
+  // Smooth lerp
+  camZoom += (targetZoom - camZoom) * Math.min(1, CAM_ZOOM_LERP * dt);
+  // Snap back to 1 when close
+  if(Math.abs(camZoom - 1) < 0.002 && targetZoom === 1) camZoom = 1;
+  // Update dynamic scale
+  dynSc = baseSc * camZoom;
 }
 
 // ─── HIT STOP / SLOW MO ───
@@ -1894,11 +1910,12 @@ for(let i = 0; i < 80; i++){
 }
 
 function drawSkyAbove(t){
-  // Only draw if camera has shifted (characters jumping)
-  if(camY < 1) return;
+  // Only draw if zoomed out (characters jumping above arena)
+  if(camZoom > 0.995) return;
   ctx.save();
   // Night sky gradient above the arena (negative Y region)
-  const skyH = CAM_MAX + 80; // height of sky region
+  // Height scales with how far we're zoomed out
+  const skyH = AH * (1/camZoom - 1) + 80; // enough to cover exposed area
   if(PERF_LOW){
     ctx.fillStyle='#050510';ctx.fillRect(0,-skyH,AW,skyH);
   } else {
@@ -4814,8 +4831,13 @@ function gameLoop(now){
   // RENDER
   ctx.save();ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
-  ctx.translate(ox+shX*sc, oy+(shY+camY)*sc);
-  ctx.scale(sc,sc);
+  // Bottom-anchored zoom: floor stays pinned at screen bottom.
+  // When dynSc < baseSc (zoomed out), the game shrinks but the floor
+  // pixel position stays the same.
+  const floorScreen = oy + AH * baseSc; // floor pos in screen px (constant)
+  const renderOy = floorScreen - AH * dynSc; // new top-left Y so floor stays put
+  ctx.translate(ox + shX * dynSc, renderOy + shY * dynSc);
+  ctx.scale(dynSc, dynSc);
 
   drawArena(gameTime);
 
