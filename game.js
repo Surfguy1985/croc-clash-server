@@ -952,7 +952,11 @@ document.addEventListener('keydown', e => {
     if(e.code===b1.rage) guestInputBuf.rage=true;
   }
 });
-document.addEventListener('keyup', e => { keys[e.code]=false; });
+document.addEventListener('keyup', e => {
+  const tag = e.target.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  keys[e.code]=false;
+});
 
 // Touch state — P1 (single-player controls + 2P P1 half)
 const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,rage:0};

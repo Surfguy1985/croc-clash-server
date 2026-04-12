@@ -1,5 +1,5 @@
 // Croc Clash Service Worker — PWA Offline Support
-const CACHE_NAME = 'croc-clash-v11.0';
+const CACHE_NAME = 'croc-clash-v11.1';
 
 // Core assets cached on install (everything needed to play offline)
 const CORE_ASSETS = [
