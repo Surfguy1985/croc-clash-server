@@ -238,18 +238,18 @@ function captureKOClip(winner, loser){
 // ─── SKIN DEFINITIONS ───
 const SKIN_DEFS = {
   gary: [
-    { id:'default', name:'Default',  src:'gary-sprite-lg.png', winsReq:0 },
-    { id:'golden',  name:'Golden',   src:'skins/gary-golden.png', winsReq:5 },
-    { id:'zombie',  name:'Zombie',   src:'skins/gary-zombie.png', winsReq:10 },
-    { id:'cowboy',  name:'Cowboy',   src:'skins/gary-cowboy.png', winsReq:25 },
-    { id:'neon',    name:'Neon',     src:'skins/gary-neon.png', winsReq:50 },
+    { id:'default', name:'Default',  src:'gary-sprite-lg.webp', winsReq:0 },
+    { id:'golden',  name:'Golden',   src:'skins/gary-golden.webp', winsReq:5 },
+    { id:'zombie',  name:'Zombie',   src:'skins/gary-zombie.webp', winsReq:10 },
+    { id:'cowboy',  name:'Cowboy',   src:'skins/gary-cowboy.webp', winsReq:25 },
+    { id:'neon',    name:'Neon',     src:'skins/gary-neon.webp', winsReq:50 },
   ],
   carl: [
-    { id:'default', name:'Default',  src:'carl-sprite-lg.png', winsReq:0 },
-    { id:'golden',  name:'Golden',   src:'skins/carl-golden.png', winsReq:5 },
-    { id:'zombie',  name:'Zombie',   src:'skins/carl-zombie.png', winsReq:10 },
-    { id:'cowboy',  name:'Cowboy',   src:'skins/carl-cowboy.png', winsReq:25 },
-    { id:'neon',    name:'Neon',     src:'skins/carl-neon.png', winsReq:50 },
+    { id:'default', name:'Default',  src:'carl-sprite-lg.webp', winsReq:0 },
+    { id:'golden',  name:'Golden',   src:'skins/carl-golden.webp', winsReq:5 },
+    { id:'zombie',  name:'Zombie',   src:'skins/carl-zombie.webp', winsReq:10 },
+    { id:'cowboy',  name:'Cowboy',   src:'skins/carl-cowboy.webp', winsReq:25 },
+    { id:'neon',    name:'Neon',     src:'skins/carl-neon.webp', winsReq:50 },
   ],
 };
 
@@ -287,30 +287,32 @@ function resetStreak(){ _memStreak=0; }
 // ─── IMAGE LOADING ───
 const images = {};
 let imagesLoaded = 0;
+// Critical images — loaded before game starts
 const IMAGE_LIST = [
-  ['arena','arena-bg.png'],
-  ['gary','gary-sprite-lg.png'],
-  ['carl','carl-sprite-lg.png'],
-  ['garyCU','gary-closeup.png'],
-  ['carlCU','carl-closeup.png'],
+  ['arena','arena-bg.webp'],
+  ['gary','gary-sprite-lg.webp'],
+  ['carl','carl-sprite-lg.webp'],
+  ['garyCU','gary-closeup.webp'],
+  ['carlCU','carl-closeup.webp'],
   // Swing animation frames — Gary
-  ['gary_swing1','gary-swing-1.png'],
-  ['gary_swing2','gary-swing-2.png'],
-  ['gary_swing3','gary-swing-3.png'],
+  ['gary_swing1','gary-swing-1.webp'],
+  ['gary_swing2','gary-swing-2.webp'],
+  ['gary_swing3','gary-swing-3.webp'],
   // Swing animation frames — Carl
-  ['carl_swing1','carl-swing-1.png'],
-  ['carl_swing2','carl-swing-2.png'],
-  ['carl_swing3','carl-swing-3.png'],
-  // Skins — Gary
-  ['gary_golden','skins/gary-golden.png'],
-  ['gary_zombie','skins/gary-zombie.png'],
-  ['gary_cowboy','skins/gary-cowboy.png'],
-  ['gary_neon','skins/gary-neon.png'],
-  // Skins — Carl
-  ['carl_golden','skins/carl-golden.png'],
-  ['carl_zombie','skins/carl-zombie.png'],
-  ['carl_cowboy','skins/carl-cowboy.png'],
-  ['carl_neon','skins/carl-neon.png'],
+  ['carl_swing1','carl-swing-1.webp'],
+  ['carl_swing2','carl-swing-2.webp'],
+  ['carl_swing3','carl-swing-3.webp'],
+];
+// Deferred images — loaded in background after game is ready
+const DEFERRED_IMAGES = [
+  ['gary_golden','skins/gary-golden.webp'],
+  ['gary_zombie','skins/gary-zombie.webp'],
+  ['gary_cowboy','skins/gary-cowboy.webp'],
+  ['gary_neon','skins/gary-neon.webp'],
+  ['carl_golden','skins/carl-golden.webp'],
+  ['carl_zombie','skins/carl-zombie.webp'],
+  ['carl_cowboy','skins/carl-cowboy.webp'],
+  ['carl_neon','skins/carl-neon.webp'],
 ];
 function loadImages(cb) {
   let total = IMAGE_LIST.length;
@@ -320,6 +322,14 @@ function loadImages(cb) {
     img.crossOrigin = 'anonymous';
     img.onload = () => { images[key] = img; imagesLoaded++; if(imagesLoaded >= total) cb(); };
     img.onerror = () => { imagesLoaded++; if(imagesLoaded >= total) cb(); };
+    img.src = src;
+  });
+}
+function loadDeferredImages(){
+  DEFERRED_IMAGES.forEach(([key, src]) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { images[key] = img; };
     img.src = src;
   });
 }
@@ -433,26 +443,11 @@ function subThump(freq=50,dur=0.25,vol=0.2,dl=0){
   }catch(e){}
 }
 
-// ─── CROWD AMBIENCE ───
-function startCrowdAmbience(){
-  if(!actx||!masterGain||crowdSource) return;
-  try {
-    const bufLen = actx.sampleRate * 2;
-    const buf = actx.createBuffer(1, bufLen, actx.sampleRate);
-    const data = buf.getChannelData(0);
-    for(let i=0;i<bufLen;i++) data[i] = Math.random()*2-1;
-    const src = actx.createBufferSource();
-    src.buffer = buf; src.loop = true;
-    const lp = actx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 380; lp.Q.value = 0.8;
-    const g = actx.createGain(); g.gain.value = 0;
-    src.connect(lp).connect(g).connect(masterGain);
-    src.start(); crowdSource = src; crowdGain = g;
-  } catch(e) {}
-}
-function setCrowdVolume(v){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(clamp(v,0,0.06), actx.currentTime, 0.3); }
-function muteCrowd(){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(0, actx.currentTime, 0.15); }
-function unmuteCrowd(){ if(crowdGain&&actx) crowdGain.gain.setTargetAtTime(0.03, actx.currentTime, 0.3); }
+// ─── CROWD AMBIENCE (DISABLED — was causing persistent audio fuzz/static) ───
+function startCrowdAmbience(){}
+function setCrowdVolume(v){}
+function muteCrowd(){}
+function unmuteCrowd(){}
 
 // ─── PREMIUM SFX ───
 function sfxHit(c){
@@ -780,8 +775,8 @@ function initVideoOverlay(){
   videoElB.removeAttribute('src');
   videoEl.parentNode.insertBefore(videoElB, videoEl.nextSibling);
   initVideoEl(videoElB);
-  // Start blob preloading immediately
-  preloadAllVideos();
+  // Defer video preloading — start after a short delay so game is playable first
+  setTimeout(() => preloadAllVideos(), 3000);
 }
 
 // Bulletproof play helper: resolves src through blob cache, retries with muted fallback
@@ -894,14 +889,20 @@ const ACTION_LABELS = {
   attack:'Smack', dash:'Dash', parry:'Parry',
   launch:'Launch 🎯', power1:'Power 1', power2:'Power 2', rage:'Rage'
 };
+const BINDS_VERSION = 2; // bump when defaults change to clear stale saved binds
 function loadBindings(){
   try {
     const s = localStorage.getItem('croc_keybinds');
-    if(s){ const d = JSON.parse(s); return { p1:{...DEFAULT_BINDS_P1,...d.p1}, p2:{...DEFAULT_BINDS_P2,...d.p2} }; }
+    if(s){
+      const d = JSON.parse(s);
+      // If saved bindings are from an older default version, discard them
+      if(d._v !== BINDS_VERSION){ localStorage.removeItem('croc_keybinds'); return { p1:{...DEFAULT_BINDS_P1}, p2:{...DEFAULT_BINDS_P2} }; }
+      return { p1:{...DEFAULT_BINDS_P1,...d.p1}, p2:{...DEFAULT_BINDS_P2,...d.p2} };
+    }
   } catch(e){}
   return { p1:{...DEFAULT_BINDS_P1}, p2:{...DEFAULT_BINDS_P2} };
 }
-function saveBindings(){ localStorage.setItem('croc_keybinds', JSON.stringify(keyBinds)); }
+function saveBindings(){ localStorage.setItem('croc_keybinds', JSON.stringify({...keyBinds, _v:BINDS_VERSION})); }
 let keyBinds = loadBindings();
 
 function codeToLabel(code){
@@ -1801,8 +1802,99 @@ let flashC='',flashT=0,vigC='',vigT=0,chromAb=0,bloomInt=0;
 function screenFlash(c,d=.08){flashC=c;flashT=d}
 function vignette(c,d=.35){vigC=c;vigT=d}
 
+// ─── SKY ABOVE ARENA (visible when camera pans up during jumps) ───
+// Pre-generate star positions once for consistent sky
+const SKY_STARS = [];
+for(let i = 0; i < 80; i++){
+  SKY_STARS.push({
+    x: (i * 73.7 + 17) % AW,
+    y: -(20 + (i * 41.3 + 7) % 280),   // negative Y = above the arena
+    r: 0.4 + (i * 0.37 % 1.6),          // radius 0.4–2.0
+    speed: 0.4 + (i * 0.11 % 0.8),      // twinkle speed
+    phase: i * 1.7,                       // twinkle phase offset
+    bright: 0.3 + (i * 0.013 % 0.7),    // base brightness
+  });
+}
+
+function drawSkyAbove(t){
+  // Only draw if camera has shifted (characters jumping)
+  if(camY < 1) return;
+  ctx.save();
+  // Night sky gradient above the arena (negative Y region)
+  const skyH = CAM_MAX + 80; // height of sky region
+  const skyG = ctx.createLinearGradient(0, -skyH, 0, 0);
+  skyG.addColorStop(0, '#020408');    // deep space at top
+  skyG.addColorStop(0.4, '#040a14');  // dark navy
+  skyG.addColorStop(0.85, '#050510'); // match arena top color
+  skyG.addColorStop(1, '#050510');    // seamless blend with arena
+  ctx.fillStyle = skyG;
+  ctx.fillRect(0, -skyH, AW, skyH);
+
+  // Moon (crescent) — upper right
+  const moonX = AW * 0.78, moonY = -skyH * 0.45, moonR = 28;
+  // Soft glow halo
+  ctx.globalAlpha = 0.12;
+  const haloG = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 4);
+  haloG.addColorStop(0, 'rgba(180,210,255,.4)');
+  haloG.addColorStop(0.5, 'rgba(120,160,220,.1)');
+  haloG.addColorStop(1, 'transparent');
+  ctx.fillStyle = haloG;
+  ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 4, 0, TAU); ctx.fill();
+  // Moon body — crescent via clipping path
+  ctx.globalAlpha = 0.95;
+  ctx.save();
+  // Create crescent clip: moon circle minus shadow circle
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR, 0, TAU);
+  ctx.arc(moonX + moonR * 0.55, moonY - moonR * 0.2, moonR * 0.82, 0, TAU, true);
+  ctx.clip();
+  // Fill the clipped crescent
+  const mG = ctx.createRadialGradient(moonX - 5, moonY - 5, moonR * 0.15, moonX, moonY, moonR);
+  mG.addColorStop(0, '#f5f0e8');
+  mG.addColorStop(0.6, '#d4cfc4');
+  mG.addColorStop(1, '#b0b5c0');
+  ctx.fillStyle = mG;
+  ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, TAU); ctx.fill();
+  ctx.restore();
+  // Crescent soft outer glow
+  ctx.globalAlpha = 0.15;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR + 3, 0, TAU);
+  ctx.arc(moonX + moonR * 0.55, moonY - moonR * 0.2, moonR * 0.82 + 3, 0, TAU, true);
+  ctx.clip();
+  ctx.shadowColor = '#c0d8ff';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#c0d8ff';
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR + 2, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+
+  // Stars
+  ctx.globalAlpha = 1;
+  for(const s of SKY_STARS){
+    const twinkle = s.bright + Math.sin(t * s.speed + s.phase) * 0.3;
+    const a = clamp(twinkle, 0.05, 1.0);
+    ctx.globalAlpha = a;
+    // Slight color variation: most white, some warm, some cool
+    const ci = (s.phase * 3) | 0;
+    ctx.fillStyle = ci % 7 === 0 ? '#ffe8c0' : ci % 5 === 0 ? '#c0d8ff' : '#ffffff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+    // Larger stars get a subtle cross-glow
+    if(s.r > 1.4){
+      ctx.globalAlpha = a * 0.25;
+      ctx.fillRect(s.x - s.r * 2.5, s.y - 0.3, s.r * 5, 0.6);
+      ctx.fillRect(s.x - 0.3, s.y - s.r * 2.5, 0.6, s.r * 5);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 // ─── ARENA DRAWING ───
 function drawArena(t){
+  drawSkyAbove(t); // draw starry sky above arena (visible when jumping)
   const aid = currentArena.id;
   if(aid === 'boardwalk') drawArenaBoardwalk(t);
   else if(aid === 'swamp') drawArenaSwamp(t);
@@ -4158,6 +4250,8 @@ loadImages(()=>{
     TT.login(()=>{ TT.startEntranceMission(); TT.addShortcut(); });
   }
   requestAnimationFrame(gameLoop);
+  // Load skins + non-critical images in background
+  loadDeferredImages();
   // Signal TikTok that game is fully loaded and ready
   if(typeof TT !== 'undefined') TT.setLoadingProgress(1);
 
