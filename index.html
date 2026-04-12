@@ -355,6 +355,8 @@
     }
     /* ══ Controls Settings ══ */
     #controls-screen.hidden{display:none!important}
+    #name-entry.hidden{display:none!important}
+    #name-input:focus{border-color:var(--gold);box-shadow:0 0 16px rgba(255,215,64,.25)}
     .bind-section{background:rgba(255,255,255,.04);border-radius:10px;padding:14px 16px;border:1px solid rgba(255,255,255,.06)}
     .bind-section h3{font-family:var(--fh);font-size:1rem;letter-spacing:.06em;margin:0 0 10px;text-align:center}
     .bind-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)}
@@ -372,6 +374,18 @@
   <!-- Special move video overlay — autoplay, no controls, embedded look -->
   <video id="special-video" playsinline preload="auto" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback"></video>
 
+  <!-- ══════ NAME ENTRY OVERLAY ══════ -->
+  <div id="name-entry" class="hidden" style="position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(10,15,10,.95),rgba(0,0,0,.98))">
+    <div style="text-align:center;padding:32px;max-width:380px;width:90%">
+      <div style="font-family:var(--fh);font-size:2.2rem;color:var(--gold);text-shadow:0 0 20px rgba(255,215,64,.3);margin-bottom:8px">🐊 CROC CLASH</div>
+      <div style="font-family:var(--fd);font-size:.95rem;color:var(--mut);margin-bottom:24px;letter-spacing:.05em">ENTER YOUR FIGHTER NAME</div>
+      <input id="name-input" type="text" maxlength="12" placeholder="Your name..." autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 18px;font-family:var(--fh);font-size:1.3rem;letter-spacing:.08em;text-align:center;text-transform:uppercase;color:var(--gold);background:rgba(255,255,255,.06);border:2px solid rgba(255,215,64,.4);border-radius:12px;outline:none;caret-color:var(--gold)">
+      <div id="name-error" style="font-family:var(--fd);font-size:.8rem;color:#f87171;margin-top:6px;min-height:18px"></div>
+      <button id="name-confirm" class="btn btn-primary" style="margin-top:16px;padding:14px 40px;font-size:1.1rem;letter-spacing:.08em;width:100%">LET'S BRAWL 🥊</button>
+      <div style="font-family:var(--fd);font-size:.7rem;color:var(--mut);margin-top:12px;opacity:.6">2–12 characters • shown on leaderboard</div>
+    </div>
+  </div>
+
   <!-- ══════ TITLE SCREEN ══════ -->
   <div id="title-screen">
     <div class="poster-bg"></div>
@@ -386,13 +400,14 @@
         <button class="btn btn-primary" id="btn-online">🌐 ONLINE</button>
         <button class="btn" id="btn-arena" style="background:linear-gradient(135deg,rgba(74,222,128,.3),rgba(22,163,74,.4));padding:14px 24px">🗺️ ARENA</button>
         <button class="btn" id="btn-ranks" style="background:linear-gradient(135deg,rgba(255,215,64,.3),rgba(245,158,11,.4));padding:14px 24px">🏆 RANKS</button>
-        <button class="btn btn-primary" id="btn-pvp">🐊 2 Player 🐊</button>
         <button class="btn btn-primary" id="btn-ai">🐊 vs AI 🤖</button>
       </div>
       <button class="btn" id="btn-install" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(168,85,247,.5));padding:14px 28px;margin-top:10px;font-size:1.1rem;letter-spacing:.06em;border:2px solid rgba(168,85,247,.6)">📲 INSTALL APP</button>
       <div class="tkeys" id="controls-display"></div>
       <button class="btn" id="btn-controls" style="background:linear-gradient(135deg,rgba(59,130,246,.35),rgba(99,102,241,.45));padding:10px 22px;margin-top:6px;font-size:.85rem;letter-spacing:.06em;border:2px solid rgba(99,102,241,.5)">🎮 CUSTOMIZE CONTROLS</button>
-      <div class="tver">V13.1 — ARENA PROGRESSION</div>
+      <button class="btn" id="btn-changename" style="background:linear-gradient(135deg,rgba(168,85,247,.3),rgba(124,58,237,.4));padding:8px 18px;margin-top:4px;font-size:.8rem;letter-spacing:.06em;border:1.5px solid rgba(168,85,247,.5)">✏️ CHANGE NAME</button>
+      <div id="title-playername" style="font-family:var(--fh);font-size:.85rem;color:var(--gold);letter-spacing:.08em;margin-top:6px;text-shadow:0 0 10px rgba(255,215,64,.2)"></div>
+      <div class="tver">V13.8 — PLAYER NAMES</div>
     </div>
   </div>
 

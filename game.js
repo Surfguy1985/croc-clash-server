@@ -130,6 +130,7 @@ function eloChange(won){ const delta = won ? randInt(18,32) : -randInt(10,20); p
 
 // ─── PERSISTENT STORAGE ───
 const SAVE_KEY = 'croc_save_v2';
+let playerName = ''; // set from localStorage or name-entry screen
 function getWeekId(){ const d=new Date(); const jan1=new Date(d.getFullYear(),0,1); return d.getFullYear()+'-W'+Math.ceil(((d-jan1)/86400000+jan1.getDay()+1)/7); }
 function getSundayMs(){
   const d=new Date(); const day=d.getDay();
@@ -139,6 +140,7 @@ function getSundayMs(){
 }
 function defaultSave(){
   return {
+    playerName:null, // null = needs name entry
     elo:0, wins:0, streak:0, bestStreak:0, losses:0,
     bpXP:0, bpTier:0,
     arenas:['boardwalk'],
@@ -179,6 +181,7 @@ function loadPlayerData(){
 function savePlayerData(){
   try {
     const d = {
+      playerName:playerName||null,
       elo:playerElo, wins:_memWins, streak:_memStreak, bestStreak:_bestStreak, losses:_memLosses,
       bpXP, bpTier,
       arenas:[...unlockedArenas],
@@ -201,6 +204,7 @@ let _prevRank=0;
 // Restore on boot — called after _memWins/_memStreak are declared (see restoreOnBoot call below)
 function restorePlayerData(){
   const d = loadPlayerData();
+  playerName = d.playerName || '';
   playerElo = d.elo;
   _memWins = d.wins; _memStreak = d.streak; _bestStreak = d.bestStreak||0; _memLosses = d.losses||0;
   bpXP = d.bpXP||0; bpTier = d.bpTier||0;
@@ -211,6 +215,7 @@ function restorePlayerData(){
   _matchHistory = d.history||[];
   _prevRank = d.prevRank||0;
 }
+function getDisplayName(){ return playerName || 'YOU'; }
 // NOTE: restorePlayerData() is called after _memWins/_memStreak declarations
 
 function addMatchResult(won, delta, arena){
@@ -284,7 +289,7 @@ function initLeaderboard(){
   // Ensure player entry exists
   const meIdx = leaderboard.findIndex(e => !e.isBot);
   const me = {
-    name:'YOU', wins:getTotalWins(), streak:getStreak(), elo:playerElo,
+    name:getDisplayName(), wins:getTotalWins(), streak:getStreak(), elo:playerElo,
     tier:getPlayerTier().id, isBot:false, prevElo:_prevRank ? playerElo : 0
   };
   if(meIdx >= 0) leaderboard[meIdx] = me;
@@ -296,6 +301,7 @@ function updateLeaderboardEntry(){
   const me = leaderboard.find(e => !e.isBot);
   if(me){
     me.prevElo = me.elo;
+    me.name = getDisplayName();
     me.wins = getTotalWins(); me.streak = getStreak(); me.elo = playerElo; me.tier = getPlayerTier().id;
   }
   leaderboard.sort((a,b) => b.elo - a.elo);
@@ -4347,6 +4353,9 @@ function updateTitleStreak(){
       twEl.textContent = '';
     }
   }
+  // Also update player name display on title
+  const pnEl = $('title-playername');
+  if(pnEl && playerName) pnEl.textContent = '\u{1F464} ' + playerName;
 }
 
 // ─── LOADOUT SCREEN ───
@@ -5177,7 +5186,7 @@ function showLeaderboard(){
   }).join('');
   // Season header with rank
   const rankArrow = rankDiff > 0 ? `<span style="color:#4ade80">▲${rankDiff}</span>` : rankDiff < 0 ? `<span style="color:#f87171">▼${Math.abs(rankDiff)}</span>` : '';
-  document.getElementById('lb-season').innerHTML = `${SEASON_NAME} &mdash; Resets Sunday<br><span style="font-size:13px;color:var(--gold)">YOUR RANK: #${myRank} / ${leaderboard.length} ${rankArrow}</span>`;
+  document.getElementById('lb-season').innerHTML = `${SEASON_NAME} &mdash; Resets Sunday<br><span style="font-size:13px;color:var(--gold)">${getDisplayName()} \u2014 RANK #${myRank} / ${leaderboard.length} ${rankArrow}</span>`;
   // Career stats row
   let careerHTML = `<div style="display:flex;gap:12px;justify-content:center;margin:8px 0 4px;flex-wrap:wrap">`;
   careerHTML += `<div style="text-align:center"><div style="font-family:var(--fh);font-size:16px;color:var(--gold)">${playerElo}</div><div style="font-family:var(--fd);font-size:10px;color:var(--mut)">ELO</div></div>`;
@@ -5648,6 +5657,62 @@ $('btn-reset-binds').addEventListener('click', () => {
 
 // Initial render
 updateControlsDisplay();
+
+// ─── NAME ENTRY SYSTEM ───
+function showNameEntry(isChange){
+  const el = $('name-entry');
+  const inp = $('name-input');
+  const err = $('name-error');
+  el.classList.remove('hidden'); el.style.display='flex';
+  inp.value = isChange ? playerName : '';
+  err.textContent = '';
+  setTimeout(()=>inp.focus(), 100);
+}
+function hideNameEntry(){
+  const el = $('name-entry');
+  el.classList.add('hidden'); el.style.display='none';
+}
+function confirmName(){
+  const inp = $('name-input');
+  const err = $('name-error');
+  let name = inp.value.trim().toUpperCase().replace(/[^A-Z0-9_ \-]/g,'');
+  if(name.length < 2){ err.textContent = 'Name must be at least 2 characters'; inp.focus(); return; }
+  if(name.length > 12){ name = name.slice(0,12); }
+  playerName = name;
+  savePlayerData();
+  // Update leaderboard entry name
+  const me = leaderboard.find(e=>!e.isBot);
+  if(me) me.name = playerName;
+  updateTitleStreak();
+  updateTitlePlayerName();
+  hideNameEntry();
+  $('title-screen').classList.remove('hidden');
+}
+function updateTitlePlayerName(){
+  const el = $('title-playername');
+  if(el && playerName) el.textContent = '\u{1F464} ' + playerName;
+  else if(el) el.textContent = '';
+}
+
+// Name confirm button
+$('name-confirm').addEventListener('click', confirmName);
+// Enter key confirms name
+$('name-input').addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmName(); });
+// Change name button on title screen
+$('btn-changename').addEventListener('click', ()=>{
+  $('title-screen').classList.add('hidden');
+  showNameEntry(true);
+});
+
+// On boot: if no name saved, show name entry instead of title
+(function checkNameOnBoot(){
+  if(!playerName){
+    $('title-screen').classList.add('hidden');
+    showNameEntry(false);
+  } else {
+    updateTitlePlayerName();
+  }
+})();
 
 
 })();
