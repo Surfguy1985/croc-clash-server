@@ -1,5 +1,5 @@
 // Croc Clash Service Worker — PWA Offline Support
-const CACHE_NAME = 'croc-clash-v13.5';
+const CACHE_NAME = 'croc-clash-v13.6';
 
 // Core assets cached on install (everything needed to play offline)
 const CORE_ASSETS = [
@@ -24,6 +24,7 @@ const CORE_ASSETS = [
   './carl-swing-3.webp',
   './arena-bg.webp',
   './arena-swamp-bg.webp',
+  './arena-colosseum-bg.webp',
   './poster.webp',
   './poster-tall.webp',
   // Skins

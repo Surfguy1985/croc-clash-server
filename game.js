@@ -33,6 +33,7 @@ const COMEBACK_TH = 3;
 // Special power cooldowns
 const CD_FREEZE = 8, CD_SAX = 10, CD_LIGHTNING = 12, CD_MYSTERY = 15, CD_TORNADO = 4, CD_TAIL = 1.4;
 const CD_SHOTGUN = 5, CD_UPPERCUT = 6, CD_BOOMERANG = 7, CD_RAPIDFIRE = 4;
+const CD_INFERNO = 20; // Colosseum-exclusive ultimate — long cooldown
 const CD_RAGE = 15; // Rage super — featured ability on 15s cooldown
 
 // ─── JUICE ───
@@ -51,14 +52,17 @@ const POWERS = {
   uppercut:  { name:'Pillow Uppercut',key:'8', icon:'🥊',  cd: CD_UPPERCUT,  desc:'Sky-launch melee' },
   boomerang: { name:'Boomerang',      key:'9', icon:'🪃',  cd: CD_BOOMERANG, desc:'Returns to sender' },
   rapidfire: { name:'Rapid Fire',     key:'0', icon:'🔥',  cd: CD_RAPIDFIRE, desc:'Pillow minigun burst' },
+  inferno:   { name:'Inferno',        key:'!', icon:'☄️',  cd: CD_INFERNO,   desc:'Fire aura + mega fireball', colosseumOnly:true },
 };
-const POWER_KEYS = Object.keys(POWERS);
+const POWER_KEYS = Object.keys(POWERS).filter(k => !POWERS[k].colosseumOnly);
+const ALL_POWER_KEYS = Object.keys(POWERS);
 
 // ─── ARENA / SCENE SYSTEM ───
 const ARENAS = [
   { id:'boardwalk', name:'Branson Boardwalk', streakReq:0, unlock:'default' },
   { id:'swamp',     name:'Swamp Midnight',   streakReq:3, unlock:'Win 3 in a row' },
   { id:'rooftop',   name:'Neon Rooftop',     streakReq:3, unlock:'Win 3 in a row' },
+  { id:'colosseum', name:'Croc Colosseum',   streakReq:0, unlock:'Beat all arenas' },
 ];
 let currentArena = ARENAS[0];
 let unlockedArenas = ['boardwalk'];
@@ -74,6 +78,12 @@ const ARENA_PLATFORMS = {
   rooftop: [
     // AC unit / satellite dish — right-center
     { x: 460, y: FLOOR_Y - 105, w: 200, h: 14, id: 'acunit' }
+  ],
+  colosseum: [
+    // Crumbled pillar — left side
+    { x: 200, y: FLOOR_Y - 95, w: 160, h: 14, id: 'pillar_l' },
+    // Raised stone slab — right side
+    { x: 600, y: FLOOR_Y - 110, w: 170, h: 14, id: 'pillar_r' }
   ],
 };
 function getArenaPlatforms(){ return ARENA_PLATFORMS[currentArena.id] || []; }
@@ -299,6 +309,7 @@ let imagesLoaded = 0;
 const IMAGE_LIST = [
   ['arena','arena-bg.webp'],
   ['arenaSwamp','arena-swamp-bg.webp'],
+  ['arenaColosseum','arena-colosseum-bg.webp'],
   ['gary','gary-sprite-lg.webp'],
   ['carl','carl-sprite-lg.webp'],
   ['garyCU','gary-closeup.webp'],
@@ -965,19 +976,19 @@ addEventListener('resize', resize); resize();
 const DEFAULT_BINDS_P1 = {
   left:'ArrowLeft', right:'ArrowRight', up:'ArrowUp', down:'ArrowDown',
   attack:'KeyS', dash:'KeyA', parry:'KeyF',
-  launch:'KeyD', power1:'KeyX', power2:'KeyC', rage:'KeyR'
+  launch:'KeyD', power1:'KeyX', power2:'KeyC', power3:'KeyZ', power4:'KeyV', rage:'KeyR'
 };
 const DEFAULT_BINDS_P2 = {
   left:'KeyJ', right:'KeyL', up:'KeyI', down:'KeyK',
   attack:'KeyH', dash:'KeyG', parry:'KeyY',
-  launch:'KeyU', power1:'KeyN', power2:'KeyM', rage:'KeyT'
+  launch:'KeyU', power1:'KeyN', power2:'KeyM', power3:'KeyB', power4:'Comma', rage:'KeyT'
 };
 const ACTION_LABELS = {
   left:'Move Left', right:'Move Right', up:'Jump', down:'Crouch/Down',
   attack:'Smack', dash:'Dash', parry:'Parry',
-  launch:'Launch 🎯', power1:'Power 1', power2:'Power 2', rage:'Rage'
+  launch:'Launch 🎯', power1:'Power 1', power2:'Power 2', power3:'Power 3', power4:'Power 4', rage:'Rage'
 };
-const BINDS_VERSION = 2; // bump when defaults change to clear stale saved binds
+const BINDS_VERSION = 3; // bump when defaults change to clear stale saved binds
 function loadBindings(){
   try {
     const s = localStorage.getItem('croc_keybinds');
@@ -1470,7 +1481,8 @@ function updateAllProjectiles(dt){
     for(let t=p.trail.length-1; t>=0; t--){ p.trail[t].life-=dt; if(p.trail[t].life<=0) p.trail.splice(t,1); }
 
     // Particle trails
-    if(p.type === 'pillow' && Math.random()<dt*15) feathers(p.x,p.y,1,'#fff');
+    if(p.type === 'pillow' && p.isInferno && Math.random()<dt*25) embers(p.x,p.y,3,Math.random()>.4?'#ff4400':'#ffd740');
+    else if(p.type === 'pillow' && Math.random()<dt*15) feathers(p.x,p.y,1,'#fff');
     if(p.type === 'pillow_mini' && Math.random()<dt*10) feathers(p.x,p.y,1,'#ffd740');
     if(p.type === 'boomerang' && Math.random()<dt*18) em(p.x,p.y,rand(-40,40),rand(-40,40),0.25,'#a78bfa',rand(3,6),'star');
     if(p.type === 'freeze' && Math.random()<dt*12) em(p.x,p.y,rand(-30,30),rand(-30,30),0.3,'#93c5fd',rand(3,7),'star');
@@ -1513,7 +1525,7 @@ function updateAllProjectiles(dt){
       sparks(p.x, p.y, 8, ic);
       feathers(p.x, p.y, 6, ic);
       // Call hit handler
-      if(p.type === 'pillow') pillowHit(p.owner, target, p.face, p.isDouble);
+      if(p.type === 'pillow') pillowHit(p.owner, target, p.face, p.isDouble, p.isInferno);
       else if(p.type === 'pillow_mini') miniPillowHit(p.owner, target, p.face);
       else if(p.type === 'boomerang') boomerangHit(p.owner, target, p.face);
       else if(p.type === 'freeze') freezeHit(p.owner, target);
@@ -1570,7 +1582,39 @@ function drawProjectiles(){
 
     ctx.rotate(p.rot);
 
-    if(p.type === 'pillow'){
+    if(p.type === 'pillow' && p.isInferno){
+      // Inferno fireball — massive blazing sphere
+      const fbT = Date.now()/60;
+      if(!PERF_LOW){
+        ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 35;
+        // Outer fire corona
+        const corona = ctx.createRadialGradient(0,0,p.w*0.2, 0,0,p.w*0.7);
+        corona.addColorStop(0,'rgba(255,200,0,.6)');
+        corona.addColorStop(0.4,'rgba(255,100,0,.4)');
+        corona.addColorStop(1,'rgba(255,30,0,0)');
+        ctx.fillStyle=corona;
+        ctx.beginPath();ctx.arc(0,0,p.w*0.7,0,TAU);ctx.fill();
+      }
+      // Core fireball
+      ctx.fillStyle = '#ffd740';
+      ctx.beginPath(); ctx.arc(0,0,p.w*0.32,0,TAU); ctx.fill();
+      ctx.fillStyle = '#ff6a00';
+      ctx.beginPath(); ctx.arc(0,0,p.w*0.42,0,TAU); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.globalAlpha = 0.4 + Math.sin(fbT*5)*0.2;
+      ctx.beginPath(); ctx.arc(-4,-4,p.w*0.18,0,TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Flame licks around the ball
+      for(let fl=0;fl<(PERF_LOW?3:6);fl++){
+        const fa = (fl/6)*TAU + fbT*2;
+        const fr = p.w*0.38 + Math.sin(fbT*4+fl*2)*6;
+        const flx = Math.cos(fa)*fr, fly = Math.sin(fa)*fr;
+        ctx.fillStyle = fl%2===0?'#ff3300':'#ffd740';
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();ctx.arc(flx,fly,4+Math.sin(fbT*3+fl)*2,0,TAU);ctx.fill();
+      }
+      ctx.globalAlpha=1;
+    } else if(p.type === 'pillow'){
       if(!PERF_LOW){ctx.shadowColor = '#ffd740'; ctx.shadowBlur = 18;}
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.ellipse(0,0,p.w/2,p.h/2,0,0,TAU); ctx.fill();
@@ -1634,7 +1678,7 @@ function drawProjectiles(){
 }
 
 // ─── PILLOW HIT ───
-function pillowHit(attacker, victim, dir, isDouble){
+function pillowHit(attacker, victim, dir, isDouble, isInferno){
   if(victim.shieldActive){
     victim.shieldActive = false;
     sfxParry();
@@ -1643,7 +1687,7 @@ function pillowHit(attacker, victim, dir, isDouble){
     shockwave(victim.x+victim.w/2, victim.y+victim.h/2, 'rgba(96,165,250,0.6)');
     return;
   }
-  const dmg = isDouble ? 2 : 1;
+  const dmg = isInferno ? 5 : (isDouble ? 2 : 1);
   victim.hp = Math.max(0, victim.hp - dmg);
   if(attacker.doubleDmg){ attacker.doubleDmg=false; }
 
@@ -1683,7 +1727,23 @@ function pillowHit(attacker, victim, dir, isDouble){
   // Pillow-launch video on every projectile hit
   /* playSpecialVideo('pillow', 1800); */
 
-  slam(`-${dmg} HP! (${victim.hp}/${MAX_HP})`, isDouble?'#f472b6':'#ff3d00', 1.2);
+  // Inferno fireball: massive explosion on impact
+  if(isInferno){
+    const vx = victim.x+victim.w/2, vy = victim.y+victim.h/2;
+    embers(vx, vy, 60, '#ff4400');
+    sparks(vx, vy, 40, '#ffd740');
+    feathers(vx, vy, 30, '#ff6a00');
+    shockwave(vx, vy, 'rgba(255,68,0,.8)');
+    shockwave(vx, vy, 'rgba(255,200,0,.5)');
+    screenFlash('rgba(255,60,0,0.45)', 0.3);
+    addTrauma(0.9);
+    bloomInt = 1.0;
+    chromAb = 0.7;
+    slam(`☄️ -${dmg} HP!! INCINERATED!!`, '#ff4400', 2);
+    hostSendEvent({type:'slam', text:`☄️ -${dmg} HP!! INCINERATED!!`, color:'#ff4400', dur:2});
+  } else {
+    slam(`-${dmg} HP! (${victim.hp}/${MAX_HP})`, isDouble?'#f472b6':'#ff3d00', 1.2);
+  }
   if(COMBO_MS[attacker.combo]){
     setTimeout(()=>{ slam(COMBO_MS[attacker.combo],'#ffd740',1); sfxCombo(attacker.combo); stars(attacker.x+attacker.w/2,attacker.y,10);
       /* playSpecialVideo('combo', 1800); */
@@ -2040,6 +2100,7 @@ function drawArena(t){
   if(aid === 'boardwalk') drawArenaBoardwalk(t);
   else if(aid === 'swamp') drawArenaSwamp(t);
   else if(aid === 'rooftop') drawArenaRooftop(t);
+  else if(aid === 'colosseum') drawArenaColosseum(t);
   else drawArenaBoardwalk(t);
 
   // Mutator visual overlay
@@ -2304,6 +2365,82 @@ function drawArenaRooftop(t){
   ctx.restore();
 }
 
+// ─── ARENA: CROC COLOSSEUM (final boss arena) ───
+function drawArenaColosseum(t){
+  // Draw full background image
+  if(images.arenaColosseum){
+    ctx.drawImage(images.arenaColosseum, 0,0,AW,AH);
+  } else {
+    // Fallback: dark stone gradient
+    if(PERF_LOW){
+      ctx.fillStyle='#1a0a08';ctx.fillRect(0,0,AW,AH);
+    } else {
+      const sg=ctx.createLinearGradient(0,0,0,AH);
+      sg.addColorStop(0,'#2d0a00');sg.addColorStop(.4,'#1a0808');sg.addColorStop(.8,'#0d0505');sg.addColorStop(1,'#1a0a04');
+      ctx.fillStyle=sg;ctx.fillRect(0,0,AW,AH);
+    }
+  }
+  if(PERF_LOW){
+    // Simplified: floor line + basic platforms
+    ctx.strokeStyle='#ff8c00';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,FLOOR_Y);ctx.lineTo(AW,FLOOR_Y);ctx.stroke();
+    const plats = ARENA_PLATFORMS.colosseum;
+    plats.forEach(p => {
+      ctx.fillStyle='#5a4a3a';ctx.fillRect(p.x-6,p.y,p.w+12,p.h);
+    });
+    return;
+  }
+  // Animated fire glow on floor
+  ctx.save();
+  ctx.globalAlpha = 0.08 + Math.sin(t*1.5)*0.04;
+  const fireG = ctx.createLinearGradient(0,FLOOR_Y-60,0,AH);
+  fireG.addColorStop(0,'transparent');
+  fireG.addColorStop(0.3,'rgba(255,100,0,.15)');
+  fireG.addColorStop(0.7,'rgba(200,60,0,.1)');
+  fireG.addColorStop(1,'rgba(100,20,0,.05)');
+  ctx.fillStyle=fireG;ctx.fillRect(0,FLOOR_Y-60,AW,AH-FLOOR_Y+60);
+  ctx.restore();
+  // Flickering torch particles
+  ctx.save();
+  const torchXs = [120, 380, 580, 840]; // torch positions across arena
+  torchXs.forEach((tx, ti) => {
+    for(let pi=0; pi<3; pi++){
+      const py = FLOOR_Y - 30 - Math.abs(Math.sin(t*3+ti*2+pi*1.3))*40;
+      const px = tx + Math.sin(t*2.5+pi*4+ti)*8;
+      const pr = 2 + Math.sin(t*4+ti+pi)*1;
+      ctx.globalAlpha = 0.3 + Math.sin(t*3+ti+pi)*0.2;
+      ctx.fillStyle = pi%2===0 ? '#ff6a00' : '#ffd740';
+      ctx.beginPath();ctx.arc(px,py,pr,0,Math.PI*2);ctx.fill();
+    }
+  });
+  ctx.globalAlpha=1;ctx.restore();
+  // Draw platforms as stone slabs
+  const plats = ARENA_PLATFORMS.colosseum;
+  plats.forEach(p => {
+    // Stone slab with shadow
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(p.x-4,p.y+4,p.w+8,p.h+4);
+    const slabG = ctx.createLinearGradient(0,p.y,0,p.y+p.h);
+    slabG.addColorStop(0,'#7a6a5a');slabG.addColorStop(0.5,'#5a4a3a');slabG.addColorStop(1,'#4a3a2a');
+    ctx.fillStyle=slabG;ctx.fillRect(p.x-4,p.y,p.w+8,p.h);
+    // Stone top highlight
+    ctx.fillStyle='rgba(255,200,120,.08)';ctx.fillRect(p.x-4,p.y,p.w+8,3);
+    // Support pillars
+    ctx.fillStyle='#3a2a1a';
+    ctx.fillRect(p.x+15,p.y+p.h,10,FLOOR_Y-p.y-p.h);
+    ctx.fillRect(p.x+p.w-25,p.y+p.h,10,FLOOR_Y-p.y-p.h);
+  });
+  // Subtle ember particles floating up
+  ctx.save();
+  for(let i=0;i<8;i++){
+    const ex = (i*127+t*30)%AW;
+    const ey = FLOOR_Y - 20 - ((t*40+i*60)%200);
+    const ea = 0.15 + Math.sin(t*2+i)*0.1;
+    ctx.globalAlpha = Math.max(0,ea);
+    ctx.fillStyle = i%3===0?'#ff4400':'#ffa040';
+    ctx.beginPath();ctx.arc(ex,ey,1+Math.sin(t+i)*0.5,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;ctx.restore();
+}
+
 // ─── FRAME-BASED SWING ANIMATION ───
 // Attack timing (seconds)
 const ATK_ANTIC = 0.12;   // wind-up (frame 1)
@@ -2534,6 +2671,38 @@ function drawCroc(c){
     }
     ctx.shadowBlur=0;ctx.restore();
   }
+  // Inferno fire aura — character wreathed in flames
+  if(c.infernoAura){
+    ctx.save();
+    const fT = Date.now()/80;
+    // Outer fire glow
+    if(!PERF_LOW){
+      const fireRad = ctx.createRadialGradient(0,0,c.w*.3, 0,0,c.w*1.1);
+      fireRad.addColorStop(0,'rgba(255,68,0,.15)');
+      fireRad.addColorStop(0.5,'rgba(255,120,0,.08)');
+      fireRad.addColorStop(1,'rgba(255,200,0,0)');
+      ctx.fillStyle=fireRad;ctx.beginPath();ctx.arc(0,0,c.w*1.1,0,TAU);ctx.fill();
+    }
+    // Animated flame tongues
+    const flameCount = PERF_LOW ? 4 : 8;
+    for(let fi=0;fi<flameCount;fi++){
+      const fAngle = (fi/flameCount)*TAU + fT;
+      const fDist = c.w*0.5 + Math.sin(fT*3+fi*2)*8;
+      const fx = Math.cos(fAngle)*fDist;
+      const fy = Math.sin(fAngle)*fDist - Math.abs(Math.sin(fT*4+fi))*20;
+      const fSz = 6 + Math.sin(fT*5+fi)*3;
+      ctx.globalAlpha = 0.5 + Math.sin(fT*3+fi)*0.2;
+      ctx.fillStyle = fi%3===0 ? '#ffd740' : fi%3===1 ? '#ff6a00' : '#ff3300';
+      if(!PERF_LOW){ctx.shadowColor='#ff4400';ctx.shadowBlur=12;}
+      ctx.beginPath();ctx.arc(fx,fy,fSz,0,TAU);ctx.fill();
+    }
+    // Inner bright core glow
+    ctx.globalAlpha = 0.15 + Math.sin(fT*2)*0.05;
+    ctx.fillStyle = '#ffd740';
+    ctx.beginPath();ctx.arc(0,0,c.w*0.4,0,TAU);ctx.fill();
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+    ctx.restore();
+  }
   if(c.tailAct){
     ctx.save();ctx.globalAlpha=.7;
     const tAngle=(Date.now()/30)%TAU;
@@ -2652,6 +2821,7 @@ function resetC(c,x){
   c.rageSuperUsed=false;
   c.rageCD=0;
   c.lightningCloud=0;
+  c.infernoT=0;c.infernoAura=false;
   // Reset dive/jump state
   c.diving=false;c.diveVy=0;c.diveSpinT=0;c.diveDownTaps=0;c.diveDownTimer=0;c.diveLanded=false;
   c.jumpHeld=false;c.coyoteT=0;
@@ -2789,7 +2959,61 @@ function useSpecialPower(c, o, powerName){
     slam('RAPID FIRE!!','#ff6b35',1);
     bloomInt=0.3;
     /* playSpecialVideo('rapidfire', 2000); */
+  } else if(powerName === 'inferno'){
+    activateInferno(c, o);
   }
+}
+
+// ─── INFERNO: Colosseum-Exclusive Ultimate ───
+function activateInferno(c, o){
+  // Set self on fire for 5 seconds
+  c.infernoT = 5.0;
+  c.infernoAura = true;
+  // Screen shake + flash
+  addTrauma(0.7);
+  screenFlash('rgba(255,80,0,0.5)', 0.4);
+  bloomInt = 1.0;
+  chromAb = 0.6;
+  // Epic slam text
+  slam('INFERNO!!', '#ff4400', 2.5);
+  sfxSpecial();
+  fText(c.x+c.w/2, c.y-80, '☄️ INFERNO!!', '#ff4400', 44, 2);
+  // Initial fire burst particles
+  const cx = c.x+c.w/2, cy = c.y+c.h/2;
+  embers(cx, cy, 40, '#ff4400');
+  sparks(cx, cy, 25, '#ffd740');
+  shockwave(cx, cy, 'rgba(255,68,0,.7)');
+  // Broadcast to guest
+  hostSendEvent({type:'slam', text:'INFERNO!!', color:'#ff4400', dur:2.5});
+  hostSendEvent({type:'sfx', name:'special'});
+  // After 0.8s build-up, launch the massive fireball
+  setTimeout(() => {
+    if(!c.alive || state !== 'fight') return;
+    spawnInfernoFireball(c, o);
+  }, 800);
+}
+
+function spawnInfernoFireball(c, o){
+  const cx = c.x + c.w/2, cy = c.y + c.h*0.35;
+  const face = c.face;
+  // Giant fireball projectile
+  projectiles.push({
+    x: cx + face*40, y: cy,
+    vx: face * 420, vy: -40,
+    w: 100, h: 80,
+    owner: c, face, alive: true, rot: 0, trail: [],
+    type: 'pillow', isDouble: true, isMega: true, isInferno: true,
+    dmg: 5 // special damage override
+  });
+  // Explosion effects at launch point
+  addTrauma(0.5);
+  embers(cx, cy, 30, '#ff6a00');
+  sparks(cx, cy, 20, '#ffd740');
+  shockwave(cx, cy, 'rgba(255,100,0,.6)');
+  shockwave(cx, cy, 'rgba(255,200,0,.4)');
+  fText(cx, cy-40, '🔥 FIREBALL!!', '#ffd740', 36, 1.5);
+  slam('MEGA FIREBALL!!', '#ffd740', 1.5);
+  hostSendEvent({type:'slam', text:'MEGA FIREBALL!!', color:'#ffd740', dur:1.5});
 }
 
 // ─── MEGA PILLOW BOMB (Desperation Super) ───
@@ -2837,6 +3061,21 @@ function updateCroc(c,inp,o,dt){
 
   // Lightning cloud decay
   if(c.lightningCloud>0) c.lightningCloud=Math.max(0,c.lightningCloud-dt*2.5);
+
+  // Inferno fire aura update — emit fire particles while active
+  if(c.infernoAura){
+    c.infernoT -= dt;
+    if(c.infernoT <= 0){
+      c.infernoAura = false;
+      c.infernoT = 0;
+    } else {
+      // Continuous fire particles around character
+      const cx = c.x+c.w/2, cy = c.y+c.h/2;
+      if(!PERF_LOW || _frameCount%3===0){
+        embers(cx, cy-20, 2, Math.random()>.5?'#ff4400':'#ffd740');
+      }
+    }
+  }
 
   // Frozen update
   if(c.frozen){
@@ -3281,7 +3520,18 @@ let remoteInput = {left:false,right:false,up:false,down:false,attack:false,dash:
 // Buffer one-shot inputs for online guest so touch taps aren't missed between frames
 let guestInputBuf = {up:false,down:false,attack:false,dash:false,parry:false,launch:false,power1:false,power2:false,power3:false,power4:false,rage:false};
 
+function grantInfernoIfColosseum(c, lo){
+  // In the Colosseum arena, both players get Inferno as a bonus power
+  if(currentArena.id === 'colosseum'){
+    if(!lo.power3) lo.power3 = 'inferno';
+    else if(!lo.power4) lo.power4 = 'inferno';
+    // If all slots full, replace power4 with inferno
+    else if(lo.power3 !== 'inferno' && lo.power4 !== 'inferno') lo.power4 = 'inferno';
+  }
+}
 function initP(){
+  grantInfernoIfColosseum(null, loadout.p1);
+  grantInfernoIfColosseum(null, loadout.p2);
   p1=mkCroc(160,1,'Gator Gary','gary');
   p1.power1=loadout.p1.power1;
   p1.power2=loadout.p1.power2;
@@ -3578,7 +3828,7 @@ function showPowerUpgradeScreen(player, existingPowers, onDone){
 
 function triggerArenaProgression(winner){
   // Find next arena in sequence
-  const arenaOrder = ['boardwalk','swamp','rooftop'];
+  const arenaOrder = ['boardwalk','swamp','rooftop','colosseum'];
   const curIdx = arenaOrder.indexOf(currentArena.id);
   const nextIdx = curIdx + 1;
 
@@ -3658,7 +3908,7 @@ function endMatch(){
   // Check if we should progress to next arena (single player only)
   if(isAI && w === p1){
     // Player won! Check if there's a next arena
-    const arenaOrder = ['boardwalk','swamp','rooftop'];
+    const arenaOrder = ['boardwalk','swamp','rooftop','colosseum'];
     const curIdx = arenaOrder.indexOf(currentArena.id);
     if(curIdx < arenaOrder.length - 1){
       // Trigger arena progression instead of ending
@@ -3724,16 +3974,17 @@ function endMatchInner(w){
     // Arena unlocks from streaks
     if(streak >= 3 && !unlockedArenas.includes('swamp')) unlockedArenas.push('swamp');
     if(streak >= 7 && !unlockedArenas.includes('rooftop')) unlockedArenas.push('rooftop');
+    if(streak >= 10 && !unlockedArenas.includes('colosseum')) unlockedArenas.push('colosseum');
     // Streak reward notification
     const sr = STREAK_REWARDS.find(s => s.streak === streak);
-    if(sr) setTimeout(()=> slam(sr.icon + ' ' + sr.reward, '#ffd740', 2.5), videoDelay + 2000);
+    if(sr) setTimeout(()=> slam(sr.icon + ' ' + sr.reward, '#ffd740', 2.5), 13000);
     // Perfect round daily challenge
     if(w.hp >= MAX_HP) _dailyPerfect = true;
     // Check daily challenge completion
     if(dailyChallenge && !dailyChallengeComplete && dailyChallenge.check()){
       dailyChallengeComplete = true;
       addBPXP(200); // bonus XP for daily
-      setTimeout(()=> slam('✅ DAILY CHALLENGE COMPLETE! +200 XP', '#4ade80', 2.5), videoDelay + 3000);
+      setTimeout(()=> slam('✅ DAILY CHALLENGE COMPLETE! +200 XP', '#4ade80', 2.5), 14000);
     }
     $('res-streak').innerHTML=`🔥 ${streak} WIN STREAK  |  ${wins} TOTAL WINS<br><span style="font-size:13px;color:#4ade80">+${eloDelta} ELO  |  +${xpGain} XP  |  TIER ${bpTier}/10</span>`;
     $('res-streak').style.display='block';
@@ -3846,8 +4097,8 @@ function getLocalP1(){
     launch:jp[b.launch]||ts.launch,
     power1:jp[b.power1]||ts.power1,
     power2:jp[b.power2]||ts.power2,
-    power3:ts.power3,
-    power4:ts.power4,
+    power3:jp[b.power3]||ts.power3,
+    power4:jp[b.power4]||ts.power4,
     rage:jp[b.rage]||ts.rage,
   };
 }
@@ -3864,8 +4115,8 @@ function getLocalP2(){
     launch:jp[b.launch]||ts2.launch,
     power1:jp[b.power1]||ts2.power1,
     power2:jp[b.power2]||ts2.power2,
-    power3:ts2.power3,
-    power4:ts2.power4,
+    power3:jp[b.power3]||ts2.power3,
+    power4:jp[b.power4]||ts2.power4,
     rage:jp[b.rage]||ts2.rage,
   };
 }
@@ -4825,11 +5076,11 @@ function showArenaSelect(){
   cards.innerHTML = ARENAS.map(a => {
     const unlocked = unlockedArenas.includes(a.id);
     const selected = currentArena.id === a.id;
-    const colors = {boardwalk:'#ffd740',swamp:'#4ade80',rooftop:'#ff3d9a'};
+    const colors = {boardwalk:'#ffd740',swamp:'#4ade80',rooftop:'#ff3d9a',colosseum:'#ff6a00'};
     return `<div class="arena-card" data-arena="${a.id}" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:12px;cursor:${unlocked?'pointer':'not-allowed'};
       background:${selected?'rgba(255,215,64,.12)':'rgba(255,255,255,.03)'};border:1.5px solid ${selected?'rgba(255,215,64,.4)':'rgba(255,255,255,.06)'};
       opacity:${unlocked?1:0.45}">
-      <div style="font-size:28px">${a.id==='boardwalk'?'🌉':a.id==='swamp'?'🌙':'🏙️'}</div>
+      <div style="font-size:28px">${a.id==='boardwalk'?'🌉':a.id==='swamp'?'🌙':a.id==='colosseum'?'🔥':'🏙️'}</div>
       <div style="flex:1">
         <div style="font-family:var(--fh);font-size:16px;letter-spacing:.08em;color:${colors[a.id]||'var(--txt)'}">${a.name}</div>
         <div style="font-family:var(--fd);font-size:11px;color:var(--mut)">${unlocked?(selected?'SELECTED':'Click to select'):'🔒 '+a.unlock}</div>
@@ -4847,6 +5098,13 @@ function showArenaSelect(){
   });
 }
 document.getElementById('arena-close')?.addEventListener('click', () => { const e=document.getElementById('arena-select-overlay'); e.classList.add('hidden'); e.style.display='none'; });
+
+// Debug hook for testing
+window._crocDebug = {
+  setArena: (id) => { const a = ARENAS.find(x=>x.id===id); if(a){currentArena=a;if(!unlockedArenas.includes(id))unlockedArenas.push(id);} return currentArena.id; },
+  getArena: () => currentArena.id,
+  getPowers: (p) => p==='p1'?{p1:p1?.power1,p2:p1?.power2,p3:p1?.power3,p4:p1?.power4}:{p1:p2?.power1,p2:p2?.power2,p3:p2?.power3,p4:p2?.power4},
+};
 
 // ─── INIT VIRAL SYSTEMS ON BOOT ───
 // Bind title screen viral buttons
