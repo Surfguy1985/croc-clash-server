@@ -901,14 +901,31 @@ function resize(){
     canvas.height = Math.round(H * ratio);
     canvas.style.width = W + 'px';
     canvas.style.height = H + 'px';
-    // Use reduced dimensions for scale calculation
     const rW = canvas.width, rH = canvas.height;
     sc = Math.min(rW/AW, rH/AH);
     ox = (rW - AW*sc)/2;
     oy = (rH - AH*sc)/2;
   } else {
     canvas.width=W; canvas.height=H;
-    sc=Math.min(W/AW, H/AH); ox=(W-AW*sc)/2; oy=(H-AH*sc)/2;
+    // Fit entire 960x540 game area on screen with guaranteed margin
+    // so nothing gets cut off by browser chrome or toolbars
+    const pad = 4; // minimal breathing room (px)
+    sc = Math.min((W - pad*2)/AW, (H - pad*2)/AH);
+    ox = (W - AW*sc)/2;
+    oy = (H - AH*sc)/2;
+  }
+  // Position HTML HUD to align with the game area edges
+  const hud = document.getElementById('hud');
+  const legend = document.getElementById('key-legend');
+  if(hud){
+    hud.style.top = Math.max(0, Math.floor(oy)) + 'px';
+    hud.style.left = Math.max(0, Math.floor(ox)) + 'px';
+    hud.style.right = Math.max(0, Math.floor(ox)) + 'px';
+  }
+  if(legend){
+    legend.style.bottom = Math.max(4, Math.floor(oy) + 4) + 'px';
+    legend.style.left = Math.max(0, Math.floor(ox)) + 'px';
+    legend.style.right = Math.max(0, Math.floor(ox)) + 'px';
   }
 }
 addEventListener('resize', resize); resize();
