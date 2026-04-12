@@ -4286,27 +4286,42 @@ $('lobby-back').addEventListener('click',()=>{
   $('title-screen').classList.remove('hidden');
 });
 
-// Share invite link
+// Share invite link — pull up messages / share sheet
 $('lobby-share').addEventListener('click',()=>{
   const code = $('lobby-room-code')?.textContent?.trim();
   if(!code) return;
   const url = location.origin + location.pathname + '?room=' + code;
-  // Try TikTok share first, then native share, then clipboard
+  const msg = '\uD83D\uDC0A Join my Croc Clash match! ' + url;
+  // TikTok in-app share
   if(typeof TT !== 'undefined' && TT.isInTikTok()){
-    TT.shareGame('Join my Croc Clash match! Room: '+code);
+    TT.shareGame(msg);
     $('lobby-copied').textContent = '\u2705 Shared!';
     setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
-  } else if(navigator.share){
-    navigator.share({ title:'Croc Clash — Join My Game!', text:'Join my Croc Clash match! Room: '+code, url }).catch(()=>{});
-  } else if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard){
-    navigator.clipboard.writeText(url).then(()=>{
-      $('lobby-copied').textContent = '\u2705 Link copied! Send it to your friend.';
+    return;
+  }
+  // Mobile: use navigator.share to open native share sheet (Messages, WhatsApp, etc.)
+  if(navigator.share){
+    navigator.share({ title:'Croc Clash \u2014 Join My Game!', text: msg, url }).then(()=>{
+      $('lobby-copied').textContent = '\u2705 Invite sent!';
       setTimeout(()=>{ $('lobby-copied').textContent=''; }, 4000);
+    }).catch(()=>{});
+    return;
+  }
+  // Desktop / fallback: open SMS link which launches Messages app, then copy to clipboard too
+  const smsBody = encodeURIComponent(msg);
+  window.open('sms:?body=' + smsBody, '_blank');
+  // Also copy to clipboard as backup
+  if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard){
+    navigator.clipboard.writeText(url).then(()=>{
+      $('lobby-copied').textContent = '\u2705 Messages opened & link copied!';
+      setTimeout(()=>{ $('lobby-copied').textContent=''; }, 5000);
     }).catch(()=>{
-      prompt('Copy this link:', url);
+      $('lobby-copied').textContent = '\u2705 Messages opened!';
+      setTimeout(()=>{ $('lobby-copied').textContent=''; }, 5000);
     });
   } else {
-    prompt('Copy this link:', url);
+    $('lobby-copied').textContent = '\u2705 Messages opened!';
+    setTimeout(()=>{ $('lobby-copied').textContent=''; }, 5000);
   }
 });
 
