@@ -1207,6 +1207,26 @@ document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
   if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if(!keys[e.code]) jp[e.code]=true; keys[e.code]=true; e.preventDefault();
+  // Secret sequence tracking (only during fight, Colosseum only)
+  if(state === 'playing' && currentArena.id === 'colosseum'){
+    const rawKey = e.key.toLowerCase();
+    // Determine which player pressed this key
+    // P1 uses left side of keyboard, P2 uses right side — just track for both
+    pushSeq('p1', rawKey);
+    pushSeq('p2', rawKey);
+    // Check fireball aura sequence: LPLPLP
+    if(checkSeq('p1', SEQ_FIREBALL_AURA) && p1 && p1.alive && (!p1.secretAuraCD || p1.secretAuraCD<=0) && !p1.fireAuraActive){
+      clearSeq('p1'); activateFireballAura(p1, p2);
+    } else if(checkSeq('p2', SEQ_FIREBALL_AURA) && p2 && p2.alive && (!p2.secretAuraCD || p2.secretAuraCD<=0) && !p2.fireAuraActive){
+      clearSeq('p2'); activateFireballAura(p2, p1);
+    }
+    // Check laser eyes sequence: 0000 (only while fire aura active)
+    if(checkSeq('p1', SEQ_LASER_EYES) && p1 && p1.alive && p1.fireAuraActive && (!p1.secretLaserCD || p1.secretLaserCD<=0) && !p1.laserEyesActive){
+      clearSeq('p1'); activateLaserEyes(p1, p2);
+    } else if(checkSeq('p2', SEQ_LASER_EYES) && p2 && p2.alive && p2.fireAuraActive && (!p2.secretLaserCD || p2.secretLaserCD<=0) && !p2.laserEyesActive){
+      clearSeq('p2'); activateLaserEyes(p2, p1);
+    }
+  }
   // Buffer one-shot actions for online guest (so they're not lost between frames)
   if(typeof guestInputBuf!=='undefined'){
     const b1 = keyBinds.p1;
@@ -2873,6 +2893,73 @@ function drawCroc(c){
     ctx.shadowBlur=0;ctx.globalAlpha=1;
     ctx.restore();
   }
+  // SECRET: Fireball Aura — massive fire ring around croc (bigger than inferno)
+  if(c.fireAuraActive){
+    ctx.save();
+    const fT = Date.now()/60;
+    // Massive outer fire glow
+    if(!PERF_LOW){
+      const fireRad = ctx.createRadialGradient(0,0,c.w*.2, 0,0,c.w*2.2);
+      fireRad.addColorStop(0,'rgba(255,30,0,.2)');
+      fireRad.addColorStop(0.3,'rgba(255,80,0,.12)');
+      fireRad.addColorStop(0.6,'rgba(255,200,0,.06)');
+      fireRad.addColorStop(1,'rgba(255,200,0,0)');
+      ctx.fillStyle=fireRad;ctx.beginPath();ctx.arc(0,0,c.w*2.2,0,TAU);ctx.fill();
+    }
+    // Massive animated flame tongues — double density of inferno
+    const flameCount = PERF_LOW ? 8 : 16;
+    for(let fi=0;fi<flameCount;fi++){
+      const fAngle = (fi/flameCount)*TAU + fT;
+      const fDist = c.w*0.9 + Math.sin(fT*3+fi*2)*15;
+      const fx = Math.cos(fAngle)*fDist;
+      const fy = Math.sin(fAngle)*fDist - Math.abs(Math.sin(fT*4+fi))*30;
+      const fSz = 10 + Math.sin(fT*5+fi)*5;
+      ctx.globalAlpha = 0.6 + Math.sin(fT*3+fi)*0.2;
+      ctx.fillStyle = fi%4===0 ? '#fff' : fi%4===1 ? '#ffd740' : fi%4===2 ? '#ff6a00' : '#ff2200';
+      if(!PERF_LOW){ctx.shadowColor='#ff2200';ctx.shadowBlur=20;}
+      ctx.beginPath();ctx.arc(fx,fy,fSz,0,TAU);ctx.fill();
+    }
+    // Inner white-hot core
+    ctx.globalAlpha = 0.2 + Math.sin(fT*2)*0.08;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();ctx.arc(0,0,c.w*0.5,0,TAU);ctx.fill();
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+    ctx.restore();
+  }
+  // SECRET: Laser Eyes — bright blue glowing eyes + laser beams
+  if(c.laserEyesActive){
+    ctx.save();
+    const lt = Date.now()/50;
+    const eyeY = -c.h*0.25;
+    const eyeX1 = c.face > 0 ? c.w*0.15 : -c.w*0.15;
+    const eyeX2 = c.face > 0 ? c.w*0.25 : -c.w*0.25;
+    // Bright blue glowing eyes
+    for(const ex of [eyeX1, eyeX2]){
+      ctx.globalAlpha=0.9;
+      ctx.fillStyle='#00ccff';
+      if(!PERF_LOW){ctx.shadowColor='#00ccff';ctx.shadowBlur=30;}
+      ctx.beginPath();ctx.arc(ex,eyeY,6,0,TAU);ctx.fill();
+      // Eye glow halo
+      ctx.globalAlpha=0.3;
+      ctx.beginPath();ctx.arc(ex,eyeY,14,0,TAU);ctx.fill();
+    }
+    // Laser beams shooting from eyes toward opponent
+    const laserLen = 500 * c.face;
+    ctx.globalAlpha=0.7+Math.sin(lt*8)*0.2;
+    ctx.strokeStyle='#00ccff';
+    ctx.lineWidth=4;
+    if(!PERF_LOW){ctx.shadowColor='#00ccff';ctx.shadowBlur=25;}
+    ctx.beginPath();ctx.moveTo(eyeX1,eyeY);ctx.lineTo(eyeX1+laserLen,eyeY+Math.sin(lt*6)*10);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(eyeX2,eyeY);ctx.lineTo(eyeX2+laserLen,eyeY-Math.sin(lt*6)*10);ctx.stroke();
+    // Thinner bright core of beams
+    ctx.globalAlpha=0.9;
+    ctx.strokeStyle='#ffffff';
+    ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(eyeX1,eyeY);ctx.lineTo(eyeX1+laserLen,eyeY+Math.sin(lt*6)*10);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(eyeX2,eyeY);ctx.lineTo(eyeX2+laserLen,eyeY-Math.sin(lt*6)*10);ctx.stroke();
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+    ctx.restore();
+  }
   if(c.tailAct){
     ctx.save();ctx.globalAlpha=.7;
     const tAngle=(Date.now()/30)%TAU;
@@ -2992,6 +3079,9 @@ function resetC(c,x){
   c.rageCD=0;
   c.lightningCloud=0;
   c.infernoT=0;c.infernoAura=false;
+  // Secret powers
+  c.fireAuraT=0;c.fireAuraActive=false;c.fireAuraDmgTick=0;c.secretAuraCD=0;
+  c.laserEyesT=0;c.laserEyesActive=false;c.secretLaserCD=0;c.laserDmgApplied=false;
   // Reset dive/jump state
   c.diving=false;c.diveVy=0;c.diveSpinT=0;c.diveDownTaps=0;c.diveDownTimer=0;c.diveLanded=false;
   c.jumpHeld=false;c.coyoteT=0;
@@ -3187,6 +3277,131 @@ function spawnInfernoFireball(c, o){
 }
 
 // ─── MEGA PILLOW BOMB (Desperation Super) ───
+// ─── SECRET SEQUENCE TRACKER ───
+// Tracks recent key presses per player for secret combos
+const _seqBuf = { p1:[], p2:[] };
+const SEQ_MAX = 10; // max buffer length
+const CD_SECRET_AURA = 25; // cooldown for fireball aura secret
+const CD_SECRET_LASER = 15; // cooldown for laser eyes secret
+
+function pushSeq(player, key){
+  const buf = _seqBuf[player];
+  buf.push(key);
+  if(buf.length > SEQ_MAX) buf.shift();
+}
+function checkSeq(player, pattern){
+  const buf = _seqBuf[player];
+  if(buf.length < pattern.length) return false;
+  const tail = buf.slice(-pattern.length);
+  return tail.every((k,i) => k === pattern[i]);
+}
+function clearSeq(player){ _seqBuf[player] = []; }
+
+// Secret combo patterns
+const SEQ_FIREBALL_AURA = ['l','p','l','p','l','p']; // LPLPLP
+const SEQ_LASER_EYES = ['0','0','0','0']; // 0000
+
+// ─── SECRET POWER: FIREBALL AURA (LPLPLP) ───
+// Croc bursts into a MASSIVE fireball aura — much bigger than inferno
+// Damages opponent on proximity contact
+function activateFireballAura(c, o){
+  if(c.fireAuraT > 0) return; // already active
+  c.fireAuraT = 8.0; // 8 seconds of massive fire
+  c.fireAuraActive = true;
+  c.secretAuraCD = CD_SECRET_AURA;
+  c.fireAuraDmgTick = 0;
+  // Epic effects
+  addTrauma(0.9);
+  screenFlash('rgba(255,40,0,0.6)', 0.5);
+  bloomInt = 1.2; chromAb = 0.8;
+  slam('\u{1F525} FIREBALL AURA!! \u{1F525}', '#ff2200', 3);
+  sfxSpecial();
+  const cx = c.x+c.w/2, cy = c.y+c.h/2;
+  // Massive explosion burst
+  embers(cx, cy, 60, '#ff2200');
+  embers(cx, cy, 40, '#ffd740');
+  sparks(cx, cy, 40, '#ff6a00');
+  shockwave(cx, cy, 'rgba(255,40,0,.9)');
+  shockwave(cx, cy, 'rgba(255,200,0,.6)');
+  fText(cx, cy-100, '\u{1F525} SECRET POWER!!', '#ff2200', 48, 2.5);
+  hostSendEvent({type:'slam', text:'\u{1F525} FIREBALL AURA!! \u{1F525}', color:'#ff2200', dur:3});
+  hostSendEvent({type:'sfx', name:'special'});
+}
+
+// ─── SECRET POWER: LASER EYES (0000 while fire aura active) ───
+// Eyes turn bright blue and shoot lasers that do -5 damage
+function activateLaserEyes(c, o){
+  if(!c.fireAuraActive) return; // must be in fire aura
+  if(c.laserEyesT > 0) return; // already active
+  c.laserEyesT = 3.0; // 3 seconds of laser beams
+  c.laserEyesActive = true;
+  c.secretLaserCD = CD_SECRET_LASER;
+  c.laserDmgApplied = false;
+  // Effects
+  addTrauma(0.6);
+  screenFlash('rgba(0,150,255,0.5)', 0.3);
+  bloomInt = 1.0; chromAb = 0.5;
+  slam('\u{1F4A0} LASER EYES!! \u{1F4A0}', '#00ccff', 2.5);
+  sfxSpecial();
+  fText(c.x+c.w/2, c.y-90, '\u{1F4A0} LASER EYES!!', '#00ccff', 44, 2);
+  hostSendEvent({type:'slam', text:'\u{1F4A0} LASER EYES!! \u{1F4A0}', color:'#00ccff', dur:2.5});
+  hostSendEvent({type:'sfx', name:'special'});
+  // Instant -5 damage to opponent
+  o.hp = Math.max(0, o.hp - 5);
+  if(o.hp <= 0) o.alive = false;
+  hitStop(0.25);
+  addTrauma(0.4);
+  fText(o.x+o.w/2, o.y-40, '-5 LASER!!', '#00ccff', 36, 1.5);
+  sparks(o.x+o.w/2, o.y+o.h/2, 30, '#00ccff');
+  embers(o.x+o.w/2, o.y+o.h/2, 20, '#0088ff');
+}
+
+// Update secret power timers each frame (called from updateCroc)
+function updateSecretPowers(c, o, dt){
+  // Fireball Aura countdown
+  if(c.fireAuraActive){
+    c.fireAuraT -= dt;
+    if(c.fireAuraT <= 0){
+      c.fireAuraActive = false;
+      c.fireAuraT = 0;
+      c.laserEyesActive = false;
+      c.laserEyesT = 0;
+      fText(c.x+c.w/2, c.y-60, 'AURA FADED', '#ff6a00', 24, 1);
+    } else {
+      // Proximity damage: if opponent is within range, damage them
+      c.fireAuraDmgTick = (c.fireAuraDmgTick||0) - dt;
+      if(c.fireAuraDmgTick <= 0){
+        const dist = Math.abs((c.x+c.w/2) - (o.x+o.w/2));
+        const vdist = Math.abs((c.y+c.h/2) - (o.y+o.h/2));
+        if(dist < 100 && vdist < 80 && o.alive && !o.invincible){
+          o.hp = Math.max(0, o.hp - 1);
+          if(o.hp <= 0) o.alive = false;
+          fText(o.x+o.w/2, o.y-30, '\u{1F525}-1', '#ff4400', 22, 0.8);
+          embers(o.x+o.w/2, o.y+o.h/2, 5, '#ff4400');
+          addTrauma(0.15);
+        }
+        c.fireAuraDmgTick = 0.5; // tick every 0.5s
+      }
+      // Fire particles (massive)
+      const cx = c.x+c.w/2, cy = c.y+c.h/2;
+      if(!PERF_LOW || _frameCount%2===0){
+        embers(cx, cy-20, 3, Math.random()>.5?'#ff2200':'#ffd740');
+      }
+    }
+  }
+  // Cooldown ticks
+  if(c.secretAuraCD > 0) c.secretAuraCD -= dt;
+  if(c.secretLaserCD > 0) c.secretLaserCD -= dt;
+  // Laser Eyes countdown
+  if(c.laserEyesActive){
+    c.laserEyesT -= dt;
+    if(c.laserEyesT <= 0){
+      c.laserEyesActive = false;
+      c.laserEyesT = 0;
+    }
+  }
+}
+
 function megaPillowBomb(attacker, victim){
   attacker.rageCD = CD_RAGE;
   sfxMegaBomb();
@@ -3246,6 +3461,9 @@ function updateCroc(c,inp,o,dt){
       }
     }
   }
+
+  // Secret powers update (Colosseum)
+  updateSecretPowers(c, o, dt);
 
   // Frozen update
   if(c.frozen){
@@ -4107,8 +4325,10 @@ function endMatchInner(w){
   $('res-grid').innerHTML=`<div><div class="v">${matchStats.p1h}</div><div class="l">Gary Hits</div></div><div><div class="v">${matchStats.p2h}</div><div class="l">Carl Hits</div></div><div><div class="v">${matchStats.p1c}</div><div class="l">Gary Best Combo</div></div><div><div class="v">${matchStats.p2c}</div><div class="l">Carl Best Combo</div></div><div><div class="v">${matchStats.p1p}</div><div class="l">Gary Parries</div></div><div><div class="v">${matchStats.p2p}</div><div class="l">Carl Parries</div></div><div style="grid-column:span 2;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;margin-top:4px"><div class="v" style="font-size:15px">${tier.icon} ${tier.name}</div><div class="l">RANK — ${playerElo} ELO</div></div>${dailyStr}`;
 
   // Play alternating winner cinematic finishing video (locked = unskippable)
-  const matchKOVid = getKOVideo(w);
-  playSpecialVideo(matchKOVid, 10500, true);
+  // Colosseum: play epic trophy celebration video instead of standard KO
+  const isColosseum = currentArena.id === 'colosseum';
+  const matchKOVid = isColosseum ? 'video/colosseum-trophy.mp4' : getKOVideo(w);
+  playSpecialVideo(matchKOVid, isColosseum ? 12000 : 10500, true);
   // Broadcast to guest: video + result screen
   hostSendEvent({type:'video', src:matchKOVid, dur:10500, locked:true});
   hostSendEvent({type:'matchEnd', resultHTML:true,
@@ -5325,6 +5545,14 @@ window._crocDebug = {
   setArena: (id) => { const a = ARENAS.find(x=>x.id===id); if(a){currentArena=a;if(!unlockedArenas.includes(id))unlockedArenas.push(id);} return currentArena.id; },
   getArena: () => currentArena.id,
   getPowers: (p) => p==='p1'?{p1:p1?.power1,p2:p1?.power2,p3:p1?.power3,p4:p1?.power4}:{p1:p2?.power1,p2:p2?.power2,p3:p2?.power3,p4:p2?.power4},
+  getState: () => state,
+  getSecretState: () => ({
+    seqBuf: JSON.parse(JSON.stringify(_seqBuf)),
+    p1: { fireAuraActive: p1?.fireAuraActive, fireAuraT: p1?.fireAuraT, laserEyesActive: p1?.laserEyesActive, laserEyesT: p1?.laserEyesT, secretAuraCD: p1?.secretAuraCD, secretLaserCD: p1?.secretLaserCD, hp: p1?.hp },
+    p2: { fireAuraActive: p2?.fireAuraActive, fireAuraT: p2?.fireAuraT, laserEyesActive: p2?.laserEyesActive, laserEyesT: p2?.laserEyesT, secretAuraCD: p2?.secretAuraCD, secretLaserCD: p2?.secretLaserCD, hp: p2?.hp },
+  }),
+  forceFireAura: (who) => { if(who==='p1') activateFireballAura(p1,p2); else activateFireballAura(p2,p1); },
+  forceLaserEyes: (who) => { if(who==='p1') activateLaserEyes(p1,p2); else activateLaserEyes(p2,p1); },
 };
 
 // ─── INIT VIRAL SYSTEMS ON BOOT ───
