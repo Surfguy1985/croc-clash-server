@@ -3,7 +3,15 @@
   "resource_list": [
     {
       "type": "file",
-      "name": "arena-bg.png"
+      "name": "arena-bg.webp"
+    },
+    {
+      "type": "file",
+      "name": "arena-colosseum-bg.webp"
+    },
+    {
+      "type": "file",
+      "name": "arena-swamp-bg.webp"
     },
     {
       "type": "folder",
@@ -77,27 +85,27 @@
     },
     {
       "type": "file",
-      "name": "carl-closeup.png"
+      "name": "carl-closeup.webp"
     },
     {
       "type": "file",
-      "name": "carl-sprite-lg.png"
+      "name": "carl-sprite-lg.webp"
     },
     {
       "type": "file",
-      "name": "carl-sprite.png"
+      "name": "carl-sprite.webp"
     },
     {
       "type": "file",
-      "name": "carl-swing-1.png"
+      "name": "carl-swing-1.webp"
     },
     {
       "type": "file",
-      "name": "carl-swing-2.png"
+      "name": "carl-swing-2.webp"
     },
     {
       "type": "file",
-      "name": "carl-swing-3.png"
+      "name": "carl-swing-3.webp"
     },
     {
       "type": "file",
@@ -105,27 +113,57 @@
     },
     {
       "type": "file",
-      "name": "gary-closeup.png"
+      "name": "gary-closeup.webp"
     },
     {
       "type": "file",
-      "name": "gary-sprite-lg.png"
+      "name": "gary-sprite-lg.webp"
     },
     {
       "type": "file",
-      "name": "gary-sprite.png"
+      "name": "gary-sprite.webp"
     },
     {
       "type": "file",
-      "name": "gary-swing-1.png"
+      "name": "gary-swing-1.webp"
     },
     {
       "type": "file",
-      "name": "gary-swing-2.png"
+      "name": "gary-swing-2.webp"
     },
     {
       "type": "file",
-      "name": "gary-swing-3.png"
+      "name": "gary-swing-3.webp"
+    },
+    {
+      "type": "folder",
+      "name": "icons",
+      "children": [
+        {
+          "type": "file",
+          "name": "apple-touch-icon.png"
+        },
+        {
+          "type": "file",
+          "name": "icon-192-maskable.png"
+        },
+        {
+          "type": "file",
+          "name": "icon-192.png"
+        },
+        {
+          "type": "file",
+          "name": "icon-384.png"
+        },
+        {
+          "type": "file",
+          "name": "icon-512-maskable.png"
+        },
+        {
+          "type": "file",
+          "name": "icon-512.png"
+        }
+      ]
     },
     {
       "type": "file",
@@ -133,7 +171,15 @@
     },
     {
       "type": "file",
+      "name": "manifest.json"
+    },
+    {
+      "type": "file",
       "name": "minigame.config.json"
+    },
+    {
+      "type": "file",
+      "name": "minigame.manifest.json"
     },
     {
       "type": "file",
@@ -145,11 +191,15 @@
     },
     {
       "type": "file",
-      "name": "poster-tall.png"
+      "name": "poster-tall.webp"
     },
     {
       "type": "file",
-      "name": "poster.png"
+      "name": "poster.webp"
+    },
+    {
+      "type": "file",
+      "name": "privacy.html"
     },
     {
       "type": "folder",
@@ -157,35 +207,35 @@
       "children": [
         {
           "type": "file",
-          "name": "carl-cowboy.png"
+          "name": "carl-cowboy.webp"
         },
         {
           "type": "file",
-          "name": "carl-golden.png"
+          "name": "carl-golden.webp"
         },
         {
           "type": "file",
-          "name": "carl-neon.png"
+          "name": "carl-neon.webp"
         },
         {
           "type": "file",
-          "name": "carl-zombie.png"
+          "name": "carl-zombie.webp"
         },
         {
           "type": "file",
-          "name": "gary-cowboy.png"
+          "name": "gary-cowboy.webp"
         },
         {
           "type": "file",
-          "name": "gary-golden.png"
+          "name": "gary-golden.webp"
         },
         {
           "type": "file",
-          "name": "gary-neon.png"
+          "name": "gary-neon.webp"
         },
         {
           "type": "file",
-          "name": "gary-zombie.png"
+          "name": "gary-zombie.webp"
         }
       ]
     },
@@ -194,9 +244,17 @@
       "name": "tiktok-sdk.js"
     },
     {
+      "type": "file",
+      "name": "tos.html"
+    },
+    {
       "type": "folder",
       "name": "video",
       "children": [
+        {
+          "type": "file",
+          "name": "colosseum-trophy.mp4"
+        },
         {
           "type": "file",
           "name": "ko-carl-wins-2.mp4"

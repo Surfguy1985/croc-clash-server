@@ -664,8 +664,8 @@
   <script src="multiplayer.js"></script>
   <script src="game.js"></script>
   <script>
-    // Register PWA Service Worker
-    if('serviceWorker' in navigator){
+    // Register PWA Service Worker (skip inside TikTok Mini Game)
+    if('serviceWorker' in navigator && typeof TTMinis === 'undefined'){
       navigator.serviceWorker.register('sw.js', { scope: './' }).catch(()=>{});
     }
 

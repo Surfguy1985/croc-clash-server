@@ -5284,6 +5284,15 @@ function tryStartOnlineMatch(){
 // ─── DOM BINDINGS ───
 const $ = id => document.getElementById(id);
 
+// Safe clipboard write — skips inside TikTok Mini Game (banned API)
+function safeClipWrite(text){
+  if(typeof TTMinis !== 'undefined') return Promise.resolve(false); // inside TikTok, skip
+  if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard){
+    return navigator.clipboard.writeText(text).then(()=>true).catch(()=>false);
+  }
+  return Promise.resolve(false);
+}
+
 $('btn-online').addEventListener('click',()=>{ initAudio(); isOnline=false; showOnlineLobby(); });
 // btn-pvp removed from UI
 if($('btn-pvp')) $('btn-pvp').addEventListener('click',()=>{ initAudio(); isOnline=false; pendingIsAI=false; buildLoadoutScreen(); });
@@ -5358,9 +5367,7 @@ $('lobby-share').addEventListener('click',()=>{
     return;
   }
   // Copy link to clipboard first
-  const copied = (typeof navigator.clipboard !== 'undefined' && navigator.clipboard)
-    ? navigator.clipboard.writeText(url).then(()=>true).catch(()=>false)
-    : Promise.resolve(false);
+  const copied = safeClipWrite(url);
   copied.then((ok)=>{
     // Show the link visibly so user can long-press to copy or share manually
     const el = $('lobby-copied');
@@ -5495,7 +5502,7 @@ document.getElementById('share-close')?.addEventListener('click', () => { const 
 document.getElementById('btn-share-clip')?.addEventListener('click', showShareScreen);
 document.getElementById('share-copy')?.addEventListener('click', () => {
   const url = window.location.origin + window.location.pathname + '?challenge=1';
-  if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard) navigator.clipboard.writeText('🐊 I just dominated in CROC CLASH! Can you beat my streak? ' + url);
+  safeClipWrite('🐊 I just dominated in CROC CLASH! Can you beat my streak? ' + url);
 });
 document.getElementById('share-tiktok')?.addEventListener('click', () => {
   // TikTok Mini Games sharing API
@@ -5504,7 +5511,7 @@ document.getElementById('share-tiktok')?.addEventListener('click', () => {
   } else {
     // Fallback: copy link
     const url = window.location.origin + window.location.pathname + '?challenge=1';
-    if(typeof navigator.clipboard !== 'undefined' && navigator.clipboard) navigator.clipboard.writeText('🐊 CROC CLASH K.O.! ' + url);
+    safeClipWrite('🐊 CROC CLASH K.O.! ' + url);
     alert('Link copied! Share it on TikTok.');
   }
 });
