@@ -120,7 +120,7 @@ function validInput(inp){
 }
 function safeEvent(ev){
   if(!ev||typeof ev!=='object'||typeof ev.type!=='string'||ev.type.length>40)return null;
-  const allowed=['video','slam','sfx','roundStart','matchEnd','hideVideo','screenFlash','vignette','trauma','hitStop','slowMo','rematchStart','ping_req','ping_reply','arena','emote'];
+  const allowed=['video','slam','sfx','roundStart','matchEnd','hideVideo','screenFlash','vignette','trauma','hitStop','slowMo','rematchStart','ping_req','ping_reply','arena','emote','memoryShard'];
   return allowed.includes(ev.type)?ev:null;
 }
 
