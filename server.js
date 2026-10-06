@@ -87,7 +87,11 @@ function detach(ws,{intentional=false}={}){
   ws.roomCode=null;ws.playerNum=null;
   if(!code||!num)return;
   const room=rooms.get(code);if(!room)return;
-  if(room[slot(room,num)]===ws) room[slot(room,num)]=null;
+  // Ignore a late close from a socket that has already been replaced by a
+  // successfully resumed connection. Without this guard the old socket could
+  // put a healthy room back into reconnect-pause after resume completed.
+  if(room[slot(room,num)]!==ws)return;
+  room[slot(room,num)]=null;
   if(intentional){
     clearGrace(room,num);
     if(num===1){closeRoom(code,'host_left');}
