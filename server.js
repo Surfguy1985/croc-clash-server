@@ -209,6 +209,14 @@ function handleMessage(ws,msg){
   }
   if(t==='event'){
     const ev=safeEvent(msg.ev);if(!ev)return;
+    // Guest may send only lightweight social/network events. Authoritative
+    // game transitions, match results, videos and memory rewards remain host-only.
+    const guestAllowed=new Set(['emote','ping_req','ping_reply']);
+    if(num===2&&!guestAllowed.has(ev.type))return;
+    if(ev.type==='emote'){
+      const allowedEmoji=new Set(['👑','😂','🏈','🕺','🥒','❤️','😎']);
+      ev.emoji=allowedEmoji.has(String(ev.emoji||''))?String(ev.emoji):'😎';
+    }
     if(ev.type==='arena'&&num===1&&typeof ev.arena==='string')room.arena=ev.arena;
     send(other(room,num),{t:'event',ev});return;
   }
