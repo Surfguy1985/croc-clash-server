@@ -13,6 +13,8 @@ const RECONNECT_GRACE = 25 * 1000;
 const HEARTBEAT_INTERVAL = 20 * 1000;
 const MAX_MESSAGE_BYTES = 96 * 1024;
 const MAX_MESSAGES_PER_SEC = 180;
+const PROTOCOL = 4;
+const MIN_CLIENT_VERSION = 'croc-web-8.4';
 
 const MIME = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.mp4':'video/mp4','.webm':'video/webm','.json':'application/json','.woff':'font/woff','.woff2':'font/woff2'};
 
@@ -27,7 +29,7 @@ const httpServer = http.createServer((req,res)=>{
   if(req.url==='/health'){
     const liveRooms=[...rooms.values()].filter(r=>r.p1||r.p2).length;
     res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'});
-    return res.end(JSON.stringify({status:'ok',protocol:3,rooms:liveRooms,clients:wss.clients.size,uptime:Math.round(process.uptime())}));
+    return res.end(JSON.stringify({status:'ok',protocol:PROTOCOL,server_version:'relay-4.0',rooms:liveRooms,clients:wss.clients.size,uptime:Math.round(process.uptime())}));
   }
   let urlPath=req.url.split('?')[0];
   if(urlPath==='/') urlPath='/index.html';
@@ -64,7 +66,7 @@ function slot(room,num){return num===1?'p1':'p2';}
 function clearGrace(room,num){const k=num===1?'p1Grace':'p2Grace';if(room[k]){clearTimeout(room[k]);room[k]=null;}}
 function touchRoom(room){room.lastActive=Date.now();scheduleIdle(room.code);}
 function roomStatus(room){
-  return {t:'room_status',code:room.code,p1:!!room.p1,p2:!!room.p2,inGame:!!room.inGame,arena:room.arena||'boardwalk'};
+  return {t:'room_status',protocol:PROTOCOL,code:room.code,p1:!!room.p1,p2:!!room.p2,p1Ready:!!room.p1Ready,p2Ready:!!room.p2Ready,inGame:!!room.inGame,arena:room.arena||'boardwalk'};
 }
 function broadcastStatus(room){send(room.p1,roomStatus(room));send(room.p2,roomStatus(room));}
 
@@ -137,7 +139,7 @@ wss.on('connection',(ws,req)=>{
   });
   ws.on('close',()=>{if(!ws._detached){ws._detached=true;detach(ws,{intentional:false});}});
   ws.on('error',()=>{});
-  send(ws,{t:'welcome',protocol:3,id:ws.id,reconnect_grace_ms:RECONNECT_GRACE});
+  send(ws,{t:'welcome',protocol:PROTOCOL,server_version:'relay-4.0',id:ws.id,reconnect_grace_ms:RECONNECT_GRACE});
 });
 
 const heartbeat=setInterval(()=>{
@@ -150,14 +152,15 @@ wss.on('close',()=>clearInterval(heartbeat));
 
 function handleMessage(ws,msg){
   const t=msg&&msg.t;
+  if((t==='create'||t==='join')&&Number(msg.protocol)!==PROTOCOL){send(ws,{t:'version_mismatch',protocol:PROTOCOL});return;}
   if(t==='ping'){send(ws,{t:'pong',ts:Date.now()});return;}
 
   if(t==='create'){
     detach(ws,{intentional:true}); ws._detached=false;
     const code=uniqueCode();
-    const room={code,p1:ws,p2:null,p1Token:token(),p2Token:null,p1Grace:null,p2Grace:null,idleTimer:null,created:Date.now(),lastActive:Date.now(),inGame:false,arena:'boardwalk'};
+    const room={code,p1:ws,p2:null,p1Token:token(),p2Token:null,p1Grace:null,p2Grace:null,idleTimer:null,created:Date.now(),lastActive:Date.now(),inGame:false,p1Ready:false,p2Ready:false,arena:'boardwalk'};
     rooms.set(code,room);ws.roomCode=code;ws.playerNum=1;touchRoom(room);
-    send(ws,{t:'created',code,num:1,resume_token:room.p1Token,protocol:3});broadcastStatus(room);return;
+    send(ws,{t:'created',code,num:1,resume_token:room.p1Token,protocol:PROTOCOL});broadcastStatus(room);return;
   }
 
   if(t==='join'){
@@ -168,7 +171,7 @@ function handleMessage(ws,msg){
     if(room.p2&&room.p2!==ws&&room.p2.readyState===WebSocket.OPEN){send(ws,{t:'error',msg:'Room is full.'});return;}
     detach(ws,{intentional:true}); ws._detached=false;
     room.p2=ws;room.p2Token=token();ws.roomCode=code;ws.playerNum=2;clearGrace(room,2);touchRoom(room);
-    send(ws,{t:'joined',num:2,code,resume_token:room.p2Token,protocol:3,arena:room.arena});
+    send(ws,{t:'joined',num:2,code,resume_token:room.p2Token,protocol:PROTOCOL,arena:room.arena});
     send(room.p1,{t:'opponent_joined',player:2});broadcastStatus(room);return;
   }
 
@@ -198,8 +201,13 @@ function handleMessage(ws,msg){
     room.inGame=true;if(typeof msg.s.arena==='string')room.arena=msg.s.arena;
     send(room.p2,{t:'state',s:msg.s});return;
   }
+  if(t==='ready'){
+    if(num===1)room.p1Ready=!!msg.ready;else room.p2Ready=!!msg.ready;
+    broadcastStatus(room);return;
+  }
   if(t==='game_start'){
     if(num!==1)return;
+    if(!room.p1Ready||!room.p2Ready){send(ws,{t:'error',msg:'Both players must be ready.'});return;}
     room.inGame=true;if(typeof msg.arena==='string')room.arena=msg.arena;
     send(room.p2,{t:'game_start',arena:room.arena});broadcastStatus(room);return;
   }
@@ -220,12 +228,12 @@ function handleMessage(ws,msg){
     if(ev.type==='arena'&&num===1&&typeof ev.arena==='string')room.arena=ev.arena;
     send(other(room,num),{t:'event',ev});return;
   }
-  if(t==='rematch'){room.inGame=false;send(other(room,num),{t:'rematch',from:num});return;}
+  if(t==='rematch'){room.inGame=false;room.p1Ready=false;room.p2Ready=false;broadcastStatus(room);send(other(room,num),{t:'rematch',from:num});return;}
   if(t==='status'){send(ws,roomStatus(room));return;}
   if(t==='leave'){ws._detached=true;detach(ws,{intentional:true});return;}
   send(ws,{t:'error',msg:'Unknown message type.'});
 }
 
 httpServer.listen(PORT,()=>{
-  console.log('Croc Clash multiplayer v3 on port '+PORT);
+  console.log('Croc Clash multiplayer v4 on port '+PORT);
 });
