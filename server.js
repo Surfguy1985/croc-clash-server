@@ -20,6 +20,7 @@ const MIME = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.pn
 
 const rooms = new Map();
 let connectionSeq = 0;
+const metrics={connections:0,roomsCreated:0,joins:0,resumes:0,joinRejected:0,rateRejected:0};
 
 const httpServer = http.createServer((req,res)=>{
   if(req.method==='OPTIONS'){
@@ -29,7 +30,7 @@ const httpServer = http.createServer((req,res)=>{
   if(req.url==='/health'){
     const liveRooms=[...rooms.values()].filter(r=>r.p1||r.p2).length;
     res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'});
-    return res.end(JSON.stringify({status:'ok',protocol:PROTOCOL,server_version:'relay-4.0',rooms:liveRooms,clients:wss.clients.size,uptime:Math.round(process.uptime())}));
+    return res.end(JSON.stringify({status:'ok',protocol:PROTOCOL,server_version:'relay-4.0',rooms:liveRooms,clients:wss.clients.size,uptime:Math.round(process.uptime()),metrics}));
   }
   let urlPath=req.url.split('?')[0];
   if(urlPath==='/') urlPath='/index.html';
@@ -98,7 +99,7 @@ function detach(ws,{intentional=false}={}){
     clearGrace(room,num);
     if(num===1){closeRoom(code,'host_left');}
     else{
-      room.inGame=false;send(room.p1,{t:'opponent_left',reason:'left'});broadcastStatus(room);touchRoom(room);
+      room.inGame=false;room.p2Ready=false;send(room.p1,{t:'opponent_left',reason:'left'});broadcastStatus(room);touchRoom(room);
     }
     return;
   }
@@ -110,7 +111,7 @@ function detach(ws,{intentional=false}={}){
     room[graceKey]=null;
     if(room[slot(room,num)])return;
     if(num===1){send(room.p2,{t:'opponent_left',reason:'connection_lost'});closeRoom(code,'host_connection_lost');}
-    else{room.inGame=false;send(room.p1,{t:'opponent_left',reason:'connection_lost'});broadcastStatus(room);touchRoom(room);}
+    else{room.inGame=false;room.p2Ready=false;send(room.p1,{t:'opponent_left',reason:'connection_lost'});broadcastStatus(room);touchRoom(room);}
   },RECONNECT_GRACE);
   broadcastStatus(room);
 }
@@ -120,6 +121,13 @@ function validInput(inp){
   const keys=['left','right','up','down','attack','dash','parry','launch','power1','power2','power3','power4','rage'];
   const out={};for(const k of keys)out[k]=!!inp[k];return out;
 }
+function safeLoadout(lo){
+  if(!lo||typeof lo!=='object')return null;
+  const clean=(v,n=40)=>String(v||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,n);
+  const out={power1:clean(lo.power1),power2:clean(lo.power2),skin:clean(lo.skin)};
+  if(lo.arena!==undefined)out.arena=clean(lo.arena,60);
+  return out;
+}
 function safeEvent(ev){
   if(!ev||typeof ev!=='object'||typeof ev.type!=='string'||ev.type.length>40)return null;
   const allowed=['video','slam','sfx','roundStart','matchEnd','hideVideo','screenFlash','vignette','trauma','hitStop','slowMo','rematchStart','ping_req','ping_reply','arena','emote','memoryShard','memoryCinematic'];
@@ -127,13 +135,13 @@ function safeEvent(ev){
 }
 
 wss.on('connection',(ws,req)=>{
-  ws.id=++connectionSeq;ws.isAlive=true;ws.roomCode=null;ws.playerNum=null;ws.rateWindow=Date.now();ws.rateCount=0;ws._detached=false;
+  ws.id=++connectionSeq;metrics.connections++;ws.isAlive=true;ws.roomCode=null;ws.playerNum=null;ws.rateWindow=Date.now();ws.rateCount=0;ws.joinWindow=Date.now();ws.joinCount=0;ws.createWindow=Date.now();ws.createCount=0;ws._detached=false;
   ws.on('pong',()=>{ws.isAlive=true;});
   ws.on('message',raw=>{
     if(raw.length>MAX_MESSAGE_BYTES){send(ws,{t:'error',msg:'Message too large'});return;}
     const now=Date.now();
     if(now-ws.rateWindow>=1000){ws.rateWindow=now;ws.rateCount=0;}
-    if(++ws.rateCount>MAX_MESSAGES_PER_SEC){send(ws,{t:'error',msg:'Too many messages'});return;}
+    if(++ws.rateCount>MAX_MESSAGES_PER_SEC){metrics.rateRejected++;send(ws,{t:'error',msg:'Too many messages'});return;}
     let msg;try{msg=JSON.parse(raw);}catch(_){send(ws,{t:'error',msg:'Invalid message'});return;}
     handleMessage(ws,msg);
   });
@@ -156,21 +164,23 @@ function handleMessage(ws,msg){
   if(t==='ping'){send(ws,{t:'pong',ts:Date.now()});return;}
 
   if(t==='create'){
+    const now=Date.now();if(now-ws.createWindow>60000){ws.createWindow=now;ws.createCount=0;}if(++ws.createCount>8){metrics.rateRejected++;send(ws,{t:'error',msg:'Too many party rooms created. Try again shortly.'});return;}
     detach(ws,{intentional:true}); ws._detached=false;
     const code=uniqueCode();
     const room={code,p1:ws,p2:null,p1Token:token(),p2Token:null,p1Grace:null,p2Grace:null,idleTimer:null,created:Date.now(),lastActive:Date.now(),inGame:false,p1Ready:false,p2Ready:false,arena:'boardwalk'};
-    rooms.set(code,room);ws.roomCode=code;ws.playerNum=1;touchRoom(room);
+    rooms.set(code,room);metrics.roomsCreated++;ws.roomCode=code;ws.playerNum=1;touchRoom(room);
     send(ws,{t:'created',code,num:1,resume_token:room.p1Token,protocol:PROTOCOL});broadcastStatus(room);return;
   }
 
   if(t==='join'){
+    const now=Date.now();if(now-ws.joinWindow>10000){ws.joinWindow=now;ws.joinCount=0;}if(++ws.joinCount>10){metrics.joinRejected++;send(ws,{t:'error',msg:'Too many join attempts. Wait a moment and try again.'});return;}
     const code=String(msg.code||'').toUpperCase().trim();
     if(!/^[A-Z2-9]{4}$/.test(code)){send(ws,{t:'error',msg:'Enter a valid 4-character room code.'});return;}
     const room=rooms.get(code);
-    if(!room){send(ws,{t:'error',msg:'Room not found. Check the code and try again.'});return;}
-    if(room.p2&&room.p2!==ws&&room.p2.readyState===WebSocket.OPEN){send(ws,{t:'error',msg:'Room is full.'});return;}
+    if(!room){metrics.joinRejected++;send(ws,{t:'error',msg:'Room not found. Check the code and try again.'});return;}
+    if(room.p2&&room.p2!==ws&&room.p2.readyState===WebSocket.OPEN){metrics.joinRejected++;send(ws,{t:'error',msg:'Room is full.'});return;}
     detach(ws,{intentional:true}); ws._detached=false;
-    room.p2=ws;room.p2Token=token();ws.roomCode=code;ws.playerNum=2;clearGrace(room,2);touchRoom(room);
+    room.p2=ws;room.p2Token=token();room.p2Ready=false;metrics.joins++;ws.roomCode=code;ws.playerNum=2;clearGrace(room,2);touchRoom(room);
     send(ws,{t:'joined',num:2,code,resume_token:room.p2Token,protocol:PROTOCOL,arena:room.arena});
     send(room.p1,{t:'opponent_joined',player:2});broadcastStatus(room);return;
   }
@@ -183,7 +193,7 @@ function handleMessage(ws,msg){
     if(!num){send(ws,{t:'resume_failed'});return;}
     const key=slot(room,num),existing=room[key];
     if(existing&&existing!==ws&&existing.readyState===WebSocket.OPEN){try{existing.close(4001,'Session resumed elsewhere');}catch(_){}}
-    room[key]=ws;ws.roomCode=code;ws.playerNum=num;ws._detached=false;clearGrace(room,num);touchRoom(room);
+    room[key]=ws;metrics.resumes++;ws.roomCode=code;ws.playerNum=num;ws._detached=false;clearGrace(room,num);touchRoom(room);
     send(ws,{t:'resumed',code,num,resume_token:resume,inGame:room.inGame,arena:room.arena});
     send(other(room,num),{t:'opponent_resumed',player:num});broadcastStatus(room);return;
   }
@@ -212,7 +222,7 @@ function handleMessage(ws,msg){
     send(room.p2,{t:'game_start',arena:room.arena});broadcastStatus(room);return;
   }
   if(t==='loadout'){
-    const lo=msg.lo&&typeof msg.lo==='object'?msg.lo:null;if(!lo)return;
+    const lo=safeLoadout(msg.lo);if(!lo)return;
     send(other(room,num),{t:'loadout',lo,from:num});return;
   }
   if(t==='event'){
